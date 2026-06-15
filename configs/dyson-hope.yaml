@@ -1,0 +1,107 @@
+# dyson-hope.yaml — INI-057 instance config
+
+instance:
+  name: dyson-hope-music-culture
+  purpose_context: |
+    Dyson Hope is a DJ, producer, and music educator based in [location].
+    This observation engine monitors music culture to surface signals relevant
+    to his creative practice, content output, and artistic positioning.
+    Focus: electronic music culture, DJ/producer ecosystem, music technology,
+    underground vs. mainstream dynamics, and scene community.
+
+lens_library_path: lenses/           # relative to vault root; one .md per lens
+
+sources:
+  rss:
+    enabled: true
+    feeds:
+      # --- Confirmed working ---
+      - name: "DJ Mag"
+        url: "https://djmag.com/feed"
+        slug: "djmag"
+      - name: "XLR8R"
+        url: "https://www.xlr8r.com/feed/"
+        slug: "xlr8r"
+      - name: "Attack Magazine"
+        url: "https://www.attackmagazine.com/feed/"
+        slug: "attack"
+      - name: "Fact Magazine"
+        url: "https://www.factmag.com/feed/"
+        slug: "fact"
+      - name: "Dancing Astronaut"
+        url: "https://dancingastronaut.com/feed/"
+        slug: "dancingastronaut"
+      - name: "Magnetic Magazine"
+        url: "https://www.magneticmag.com/feed/"
+        slug: "magnetic"
+      # --- Additional feeds to try ---
+      - name: "Data Transmission"
+        url: "https://datatransmission.co/feed/"
+        slug: "datatransmission"
+      # - name: "Traxsource Blog"   # bad XML
+      - name: "Music Ally"
+        url: "https://musically.com/feed/"
+        slug: "musicallly"
+      # --- Broken / disabled (wrong URL or bad XML — revisit later) ---
+      # - name: "Resident Advisor"     # bozo, 0 entries — RA feed URL unknown
+      # - name: "Mixmag"               # bad XML at char 38
+      # - name: "Electronic Beats"     # bad XML at char 35
+      # - name: "Beatportal"           # returns HTML (not RSS)
+      # - name: "Pitchfork Electronic" # returns HTML (not RSS)
+      # - name: "MusicTech"            # SSL hostname mismatch
+
+  reddit:
+    enabled: false
+    client_id: "__SET_BY_CEO__"
+    client_secret: "__SET_BY_CEO__"
+    subreddits:
+      - abletonlive
+      - electronicmusic
+      - aves
+      - bassheavy
+      - basshouse
+      - breakbeat
+      - DJs
+      - DnB
+      - dubstep
+      - EDM
+      - edmproduction
+      - futurebass
+      - futuregarage
+      - House
+      - housemusic
+      - modular
+      - MusicGear
+      - musicproduction
+      - NeuroFunk
+      - serum
+      - synthesizers
+      - tech_house
+      - Techno
+      - TechnoProduction
+      - trap
+      - ukbass
+      
+    post_limit: 25
+    min_score: 50          # minimum upvotes to include
+
+  beatport:
+    enabled: false  # Cloudflare 403 — requires browser automation or official API key
+    charts:
+      - genre: "Techno (Raw / Deep / Hypnotic)"
+        slug: "techno-raw-deep-hypnotic"
+      - genre: "House"
+        slug: "house"
+      - genre: "Melodic House & Techno"
+        slug: "melodic-house-techno"
+      - genre: "Organic House / Downtempo"
+        slug: "organic-house-downtempo"
+    top_n: 10              # tracks to pull per chart
+
+output:
+  vault_path: "/Volumes/SandboxData/observation-vaults/dyson-hope-music-culture/"
+  inbox_folder: "Observation Inbox"
+  interest_threshold: 2   # minimum interest_level to write to vault
+
+schedule:
+  cron: "0 8 * * *"       # 08:00 daily
