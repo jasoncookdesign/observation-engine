@@ -1,6 +1,6 @@
 # Observation Engine
 
-A config-driven cultural observation engine. Fetches signals from RSS feeds and social sources, processes them with Claude, and writes structured notes to an Obsidian vault.
+A config-driven cultural observation engine. Fetches signals from RSS feeds, processes them with Claude, and writes structured notes to an Obsidian vault.
 
 Built for [JasonOS](https://github.com/jasoncookdesign) to automate noticing — surface relevant signals daily so creative energy goes to interpretation, not monitoring.
 
@@ -8,7 +8,7 @@ Built for [JasonOS](https://github.com/jasoncookdesign) to automate noticing —
 
 ## How it works
 
-1. **Adapters** fetch raw items from configured sources (RSS feeds, Reddit, Beatport).
+1. **Adapters** fetch raw items from configured sources. The RSS adapter is active; Reddit and Beatport adapters are implemented but disabled pending API credentials and access resolution respectively.
 2. **Processor** sends each item to Claude Haiku, which produces a one-sentence observation summary, topic tags, an interest level (1–5), selected interpretive lenses, lens-scoped questions, and expanded context.
 3. **Writer** renders each processed observation as a Markdown note with YAML frontmatter and writes it to an Obsidian vault inbox folder.
 4. **Deduplication** — the engine reads existing vault notes on each run and skips any `source_url` already present.
@@ -26,9 +26,9 @@ engine/
   processor.py      # Claude API processing agent
   writer.py         # Obsidian vault note writer
   adapters/
-    rss.py          # RSS/Atom feed adapter
-    reddit.py       # Reddit RSS adapter
-    beatport.py     # Beatport charts adapter
+    rss.py          # RSS/Atom feed adapter (active)
+    reddit.py       # Reddit adapter (disabled — requires API credentials)
+    beatport.py     # Beatport adapter (disabled — Cloudflare 403)
 configs/
   dyson-hope.yaml   # Dyson Hope music culture instance
 ```
