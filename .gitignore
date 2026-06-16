@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
-*.plist
 .DS_Store
 *.log
+.jasonos-secrets
+*.secrets
