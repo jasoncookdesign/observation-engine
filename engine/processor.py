@@ -10,11 +10,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
 
-import anthropic
+import inference
 
 logger = logging.getLogger(__name__)
 
-MODEL = "claude-haiku-4-5-20251001"
 MAX_TOKENS = 1024
 
 SYSTEM_PROMPT_TEMPLATE = """\
@@ -73,14 +72,6 @@ def process(raw: dict, config: dict) -> Optional[dict]:
     Returns:
         Processed observation dict ready for writer.py, or None on failure.
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        logger.error(
-            "ANTHROPIC_API_KEY not set — skipping observation: %s",
-            raw.get("source_url", ""),
-        )
-        return None
-
     purpose_context = config["instance"].get("purpose_context", "").strip()
     vault_path = config["output"]["vault_path"]
     lens_library_rel = config.get("lens_library_path", "lenses/")
@@ -103,19 +94,15 @@ def process(raw: dict, config: dict) -> Optional[dict]:
     )
 
     try:
-        client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
+        response_text, backend = inference.generate_json(
+            system_prompt, user_prompt, max_tokens=MAX_TOKENS
         )
-        response_text = message.content[0].text.strip()
+        logger.info(
+            "Processed via %s backend: %s", backend, raw.get("source_url", "")
+        )
     except Exception as exc:
         logger.error(
-            "Anthropic API error for '%s': %s",
-            raw.get("source_url", ""),
-            exc,
+            "Inference error for '%s': %s", raw.get("source_url", ""), exc
         )
         return None
 

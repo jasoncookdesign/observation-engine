@@ -4,6 +4,7 @@
 anthropic
 beautifulsoup4
 feedparser
+ollama
 praw
 pyyaml
 requests
