@@ -237,15 +237,37 @@ def _parse_response(response_text: str) -> Optional[dict]:
         return None
 
 
-def _match_lenses(raw_lenses: List[str], available: List[str]) -> List[str]:
+def _normalize_lens_name(entry) -> Optional[str]:
+    """Coerce a model-returned lens entry to a name string.
+
+    Accepts a plain string or a name-bearing object — some models (notably
+    llama3.1:8b) return lenses as ``[{"name": "Historical Context"}]`` instead
+    of ``["Historical Context"]``. Returns None when no usable name is present,
+    so a malformed entry is skipped rather than crashing the run.
     """
-    Match model-returned lens names against the known available lens names.
-    Accepts exact match or case-insensitive match. Returns up to 3.
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        for key in ("name", "lens", "lens_name", "title"):
+            value = entry.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    return None
+
+
+def _match_lenses(raw_lenses, available: List[str]) -> List[str]:
+    """
+    Match model-returned lens entries against the known available lens names.
+    Tolerates entries given as strings or as name-bearing objects. Accepts exact
+    or case-insensitive match. Returns up to 3.
     """
     available_lower = {name.lower(): name for name in available}
     matched = []
-    for raw in raw_lenses:
-        canonical = available_lower.get(raw.lower())
+    for raw in (raw_lenses or []):
+        name = _normalize_lens_name(raw)
+        if not name:
+            continue
+        canonical = available_lower.get(name.lower())
         if canonical and canonical not in matched:
             matched.append(canonical)
         if len(matched) >= 3:
