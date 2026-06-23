@@ -1,64 +1,69 @@
-# INI-057 — Music Culture Observation Engine: Install Guide
+# Music Culture Observation Engine: Install Guide
 
-The engine runs as a per-user launchd job on the Mac mini and fires **daily at
-08:00**. Repo lives at `/Volumes/SandboxData/code/observation-engine/`.
+The engine runs as a per-user launchd job and fires **daily at 08:00**.
 
-> **One-step install / reinstall:** run the activation script. It is idempotent
-> and does everything below (install launcher to ~/bin, deploy plist, bootstrap,
-> verify, test-run):
+> **One-step install / reinstall:** run the activation script from the repo
+> root. It is idempotent and does everything below (install launcher to `~/bin`,
+> deploy plist, bootstrap, verify, test-run):
 >
 > ```bash
-> zsh /Volumes/SandboxData/code/observation-engine/jasonos-observation-engine-activate.command
+> zsh /path/to/observation-engine/jasonos-observation-engine-activate.command
 > ```
 >
 > Two things that are easy to get wrong and will silently break the daily run:
 > 1. A plist sitting in `~/Library/LaunchAgents/` does **nothing** until it is
 >    `launchctl bootstrap`-ed. Copying the file is not enough.
 > 2. launchd cannot exec the entry script, nor open StandardOut/Err paths, on
->    the external `/Volumes/SandboxData` volume — it fails with EX_CONFIG (78)
->    and no output. So the launcher lives in `~/bin` and logs go to
->    `~/Library/Logs` (internal disk). The running engine still reads config and
->    writes the vault on `/Volumes/SandboxData` normally.
+>    an external volume — it fails with EX_CONFIG (78) and no output. So the
+>    launcher lives in `~/bin` and logs go to `~/Library/Logs` (internal disk).
+>    The running engine still reads config and writes the vault on the external
+>    volume normally.
 
 ---
 
 ## 1. Install Python dependencies
 
-Run once on the Mac mini, against the interpreter the job uses
-(`/opt/homebrew/bin/python3`):
+Run once against the interpreter the job uses (`/opt/homebrew/bin/python3`):
 
 ```bash
-/opt/homebrew/bin/python3 -m pip install -r \
-  /Volumes/SandboxData/code/observation-engine/requirements.txt --break-system-packages
+/opt/homebrew/bin/python3 -m pip install -r /path/to/observation-engine/requirements.txt \
+  --break-system-packages
 ```
 
 ---
 
 ## 2. Secrets (no keys in the plist)
 
-The job loads secrets from `/Volumes/SandboxData/.jasonos-secrets` via the
-launcher (`key=value` per line, not tracked in git). Inference is local-first
-(Ollama) and falls back to the Anthropic API, so `ANTHROPIC_API_KEY` should be
-present there for the fallback path. The plist contains **no** API key.
+The launcher (`run.sh`) reads a secrets file (`key=value` per line, not tracked
+in git) and exports its contents as environment variables before exec-ing the
+engine. Inference is local-first (Ollama) with Anthropic API as fallback, so
+`ANTHROPIC_API_KEY` should be present in the secrets file to enable the fallback
+path. The plist contains **no** API key.
+
+Set the secrets file path by editing `run.sh` (`SECRETS=` at the top).
 
 ---
 
 ## 3. Load the launchd job (bootstrap — required)
 
 The activation script in the box above is the supported path. The manual
-equivalent:
+equivalent (substitute `/path/to/observation-engine` for your actual repo path):
 
 ```bash
-cp /Volumes/SandboxData/code/observation-engine/run.sh ~/bin/jasonos-observation-engine.sh
+REPO=/path/to/observation-engine
+
+cp "$REPO/run.sh" ~/bin/jasonos-observation-engine.sh
 chmod 755 ~/bin/jasonos-observation-engine.sh
 mkdir -p ~/Library/Logs
-cp /Volumes/SandboxData/code/observation-engine/com.jasonos.observation-engine.dyson-hope.plist \
-   ~/Library/LaunchAgents/
+cp "$REPO/com.jasonos.observation-engine.dyson-hope.plist" ~/Library/LaunchAgents/
 
 launchctl bootout   gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist 2>/dev/null
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist
 launchctl list | grep observation-engine    # verify registered
 ```
+
+Edit `run.sh` to point `SECRETS` at your secrets file and confirm the `exec` line
+uses the correct Python interpreter and repo path before installing.
 
 The job runs daily at 08:00. It does **not** run at load time (`RunAtLoad` is
 false). Stop scheduling without deleting:
@@ -74,7 +79,7 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-en
 Fetches and processes observations but does not write to the vault:
 
 ```bash
-cd /Volumes/SandboxData/code/observation-engine
+cd /path/to/observation-engine
 /opt/homebrew/bin/python3 engine/main.py --config configs/dyson-hope.yaml --dry-run
 ```
 
@@ -97,7 +102,7 @@ Logs (internal disk):
 ## 6. Open the vault in Obsidian
 
 1. In Obsidian, choose **Open folder as vault**.
-2. Open `/Volumes/SandboxData/observation-vaults/dyson-hope-music-culture/`.
+2. Open the directory configured as `output.vault_path` in your instance config.
 3. **Settings → Community plugins** and enable **Dataview** (required for the
    Observation Inbox / Reaction Queue views to render).
 

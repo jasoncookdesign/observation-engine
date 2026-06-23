@@ -1,7 +1,5 @@
-# INI-057 — Music Culture Observation Engine: Design Spec
+# Music Culture Observation Engine: Design Spec
 
-**Status:** Phase 1 complete
-**Author:** President Agent + Engineering Director
 **Date:** 2026-06-15
 
 ---
@@ -23,7 +21,7 @@ tags: [<tag1>, <tag2>]                                 # topic tags: genre, form
 interest_level: <1-5>                                  # 1=low signal, 5=high relevance
 lenses: [<lens_name>, ...]                             # 1–3 lenses from the Lens Library
 status: inbox                                          # inbox | queued | reacted | archived
-notes: ""                                              # Dyson Hope fills this in
+notes: ""                                              # filled in by the vault owner
 ---
 ```
 
@@ -89,10 +87,10 @@ def fetch(config: dict) -> list[dict]:
 
 ## 3. Instance Config Format
 
-The instance config is a YAML file that drives the engine for one deployment. Engine core reads this file at startup. No Dyson Hope-specific values appear in engine code.
+The instance config is a YAML file that drives the engine for one deployment. Engine core reads this file at startup; no instance-specific values appear in engine code.
 
 ```yaml
-# dyson-hope.yaml — INI-057 instance config
+# dyson-hope.yaml — example instance config
 
 instance:
   name: dyson-hope-music-culture
@@ -117,7 +115,7 @@ sources:
         slug: "djmag"
 
   reddit:
-    enabled: true
+    enabled: false     # requires API credentials (client_id + client_secret)
     subreddits:
       - electronicmusic
       - DJs
@@ -130,7 +128,7 @@ sources:
     min_score: 50          # minimum upvotes to include
 
   beatport:
-    enabled: true
+    enabled: false     # Cloudflare 403 — requires browser automation or official API key
     charts:
       - genre: "Techno (Raw / Deep / Hypnotic)"
         slug: "techno-raw-deep-hypnotic"
@@ -143,7 +141,7 @@ sources:
     top_n: 10              # tracks to pull per chart
 
 output:
-  vault_path: "/Volumes/SandboxData/observation-vaults/dyson-hope/"
+  vault_path: "/path/to/obsidian-vault/dyson-hope-music-culture/"
   inbox_folder: "Observation Inbox"
   interest_threshold: 2   # minimum interest_level to write to vault
 
@@ -172,7 +170,7 @@ dyson-hope/                          # vault root
 ├── Views/
 │   ├── Observation Inbox.md         # Dataview query: all inbox observations
 │   └── Reaction Queue.md            # Dataview query: status = queued
-└── README.md                        # vault orientation for Dyson Hope
+└── README.md                        # vault orientation for the instance owner
 ```
 
 ### Dataview: Observation Inbox View
@@ -197,7 +195,7 @@ SORT date DESC
 
 ## 5. Processing Prompt Design
 
-The processing agent receives raw observations from adapters and transforms them into structured vault notes. All prompts are parameterized — no hardcoded references to Dyson Hope or music culture.
+The processing agent receives raw observations from adapters and transforms them into structured vault notes. All prompts are parameterized via the instance config — no hardcoded subject references appear in engine code.
 
 ### System Prompt (parameterized)
 
@@ -248,32 +246,40 @@ Return as JSON:
 
 ### Lens Library Injection
 
-The lens library is summarized as a list of `name: one-line description` entries for prompt injection. Full lens notes live in the vault and are for Dyson Hope's reference, not the prompt.
+The lens library is summarized as a list of `name: one-line description` entries for prompt injection. Full lens notes live in the vault for the instance owner's reference — only the summary is injected into the prompt.
 
 ---
 
-## 6. Workspace Layout
+## 6. Repository Layout
 
 ```
-/Volumes/SandboxData/workspaces/engineering/INI-057/
+observation-engine/
 ├── design-spec.md           # this document
+├── DOCS.md                  # documentation index
+├── INSTALL.md               # macOS deployment guide
+├── README.md                # project overview and quick-start
+├── requirements.txt         # Python dependencies
+├── run.sh                   # launchd launcher (copied to ~/bin at deploy time)
+├── com.jasonos.observation-engine.dyson-hope.plist   # launchd schedule template
+├── jasonos-observation-engine-activate.command        # one-step activation script
 ├── engine/
 │   ├── main.py              # CLI entry point + pipeline runner
 │   ├── config.py            # config loader + validator
-│   ├── processor.py         # processing agent (Claude API)
+│   ├── inference.py         # inference backend abstraction (Ollama / Anthropic)
+│   ├── processor.py         # processing agent
 │   ├── writer.py            # Obsidian note writer
-│   ├── scheduler.py         # launchd plist generator
-│   └── adapters/
+│   ├── adapters/
+│   │   ├── __init__.py
+│   │   ├── rss.py
+│   │   ├── reddit.py
+│   │   └── beatport.py
+│   └── tests/
 │       ├── __init__.py
-│       ├── rss.py
-│       ├── reddit.py
-│       └── beatport.py
-├── configs/
-│   └── dyson-hope.yaml      # instance config
-├── tests/
-│   ├── test_adapters.py
-│   └── test_processor.py
-└── com.jasonos.observation-engine.dyson-hope.plist   # launchd schedule
+│       ├── test_inference.py
+│       ├── test_processor_lenses.py
+│       └── test_processor_routing.py
+└── configs/
+    └── dyson-hope.yaml      # example instance config
 ```
 
 ---
@@ -285,10 +291,10 @@ The lens library is summarized as a list of `name: one-line description` entries
 | Beatport access | Web scrape (requests + BeautifulSoup) | No public API; HTML chart pages are stable and structured |
 | Reddit access | PRAW (official Python Reddit API wrapper) | Clean, rate-limit-aware, no key scraping |
 | Vault write method | Direct file write (pathlib) | Obsidian vaults are local folders; no API needed |
-| Processing model | Claude claude-haiku-4-5 (cost) / fallback sonnet | High-volume daily processing; Haiku is sufficient for categorization |
-| Scheduling | launchd plist | Native macOS; consistent with JasonOS infrastructure pattern |
-| Social sources | Deferred | No viable API access path for Instagram/TikTok; deferred per INI-057 scope |
+| Inference routing | Ollama local-first (`llama3.1:8b`); Anthropic `claude-haiku-4-5-20251001` fallback | Reduces API cost and latency when a local server is available; fails open so a stopped Ollama never breaks a run |
+| Scheduling | launchd plist | Native macOS; no external scheduler dependency |
+| Social sources | Deferred | No viable API access path for Instagram/TikTok |
 
 ---
 
-*End of design spec. Phase 2 begins vault creation. Phase 3 begins engine build.*
+*End of design spec.*

@@ -9,7 +9,7 @@ Built for [JasonOS](https://github.com/jasoncookdesign) to automate noticing —
 ## How it works
 
 1. **Adapters** fetch raw items from configured sources. The RSS adapter is active; Reddit and Beatport adapters are implemented but disabled pending API credentials and access resolution respectively.
-2. **Processor** sends each item to Claude Haiku, which produces a one-sentence observation summary, topic tags, an interest level (1–5), selected interpretive lenses, lens-scoped questions, and expanded context.
+2. **Processor** routes each item through the inference backend (local Ollama model when available, Anthropic API as fallback) to produce a one-sentence observation summary, topic tags, an interest level (1–5), selected interpretive lenses, lens-scoped questions, and expanded context.
 3. **Writer** renders each processed observation as a Markdown note with YAML frontmatter and writes it to an Obsidian vault inbox folder.
 4. **Deduplication** — the engine reads existing vault notes on each run and skips any `source_url` already present.
 
@@ -23,14 +23,16 @@ The engine is parameterized via instance config — deploying for a new subject 
 engine/
   main.py           # Entry point and orchestration loop
   config.py         # Config loader and validator
-  processor.py      # Claude API processing agent
+  inference.py      # Inference backend abstraction (Ollama-first, Anthropic fallback)
+  processor.py      # Observation processing agent
   writer.py         # Obsidian vault note writer
   adapters/
     rss.py          # RSS/Atom feed adapter (active)
     reddit.py       # Reddit adapter (disabled — requires API credentials)
     beatport.py     # Beatport adapter (disabled — Cloudflare 403)
+  tests/            # Unit and integration tests (stdlib unittest)
 configs/
-  dyson-hope.yaml   # Dyson Hope music culture instance
+  dyson-hope.yaml   # Example instance config
 ```
 
 ---
@@ -40,8 +42,16 @@ configs/
 ### 1. Install dependencies
 
 ```bash
-pip3 install feedparser anthropic pyyaml requests beautifulsoup4
+pip3 install -r requirements.txt
 ```
+
+Or individually:
+
+```bash
+pip3 install feedparser anthropic pyyaml requests beautifulsoup4 praw "ollama>=0.6.2,<0.7"
+```
+
+The `ollama` package is required for local inference; `praw` is required for the Reddit adapter (disabled by default).
 
 ### 2. Create an instance config
 
@@ -52,9 +62,20 @@ Copy `configs/dyson-hope.yaml` as a starting point. The config defines:
 - `output.vault_path` and `output.inbox_folder` — where to write notes
 - `lens_library_path` — path to the Obsidian vault's lens library (relative to vault root)
 
-### 3. Configure the API key
+### 3. Configure inference
 
-Set `ANTHROPIC_API_KEY` in your environment or in the launchd plist before running. The key is never committed to the repo.
+The engine runs local-first: if an [Ollama](https://ollama.com) server is reachable at `http://localhost:11434` with the `llama3.1:8b` model resident, it is used. Otherwise the engine falls back to the Anthropic API. Ollama availability is tested on every run; a stopped server never breaks a run.
+
+Environment variables (all optional — defaults shown):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | — | Required for the Anthropic fallback; omit only if Ollama is always available |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server base URL |
+| `OLLAMA_MODEL` | `llama3.1:8b` | Local model tag |
+| `OBS_PREFER_LOCAL` | `1` | Set to `0` or `false` to force API-only mode |
+
+Keys are never committed to the repo.
 
 ### 4. Dry run
 
