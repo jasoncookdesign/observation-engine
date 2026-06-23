@@ -1,79 +1,92 @@
 # INI-057 — Music Culture Observation Engine: Install Guide
 
+The engine runs as a per-user launchd job on the Mac mini and fires **daily at
+08:00**. Repo lives at `/Volumes/SandboxData/code/observation-engine/`.
+
+> **One-step install / reinstall:** run the activation script. It is idempotent
+> and does everything below (deploy plist, bootstrap, verify, test-run):
+>
+> ```bash
+> zsh /Volumes/SandboxData/code/observation-engine/jasonos-observation-engine-activate.command
+> ```
+>
+> A plist sitting in `~/Library/LaunchAgents/` does **nothing** until it is
+> bootstrapped into launchd. Copying the file is not enough — you must run the
+> activation script (or `launchctl bootstrap`, below) at least once.
+
+---
+
 ## 1. Install Python dependencies
 
-```bash
-pip3 install feedparser anthropic pyyaml requests beautifulsoup4
-```
+Run once on the Mac mini, against the interpreter the job uses
+(`/opt/homebrew/bin/python3`):
 
-Run this once on the Mac mini. If `pip3` is not found, try `python3 -m pip install ...`.
+```bash
+/opt/homebrew/bin/python3 -m pip install -r \
+  /Volumes/SandboxData/code/observation-engine/requirements.txt --break-system-packages
+```
 
 ---
 
-## 2. Set the Anthropic API key in the plist
+## 2. Secrets (no keys in the plist)
 
-Open `com.jasonos.observation-engine.dyson-hope.plist` and replace `__SET_BY_CEO__` with your real key:
-
-```xml
-<key>ANTHROPIC_API_KEY</key>
-<string>&lt;your-anthropic-api-key&gt;</string>
-```
-
-The key value is never committed to the repo — edit the plist file directly on the Mac mini after copying it to `~/Library/LaunchAgents/`.
+The job loads secrets from `/Volumes/SandboxData/.jasonos-secrets` via `run.sh`
+(`key=value` per line, not tracked in git). Inference is local-first (Ollama)
+and falls back to the Anthropic API, so `ANTHROPIC_API_KEY` should be present
+there for the fallback path. The plist contains **no** API key.
 
 ---
 
-## 3. Load the launchd job
+## 3. Load the launchd job (bootstrap — required)
 
-Copy the plist to the LaunchAgents directory and load it:
+The activation script in the box above is the supported path. The manual
+equivalent, if needed:
 
 ```bash
-cp /Volumes/SandboxData/workspaces/engineering/INI-057/com.jasonos.observation-engine.dyson-hope.plist \
+cp /Volumes/SandboxData/code/observation-engine/com.jasonos.observation-engine.dyson-hope.plist \
    ~/Library/LaunchAgents/
 
-launchctl load ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist
+launchctl bootout   gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist 2>/dev/null
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist
 ```
 
-To verify it is loaded:
+Verify it is registered:
 
 ```bash
 launchctl list | grep observation-engine
 ```
 
-To unload (stop scheduling without deleting):
+Stop scheduling without deleting:
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist
 ```
 
-The job runs daily at 08:00. It does NOT run at load time (`RunAtLoad` is false).
+The job runs daily at 08:00. It does **not** run at load time (`RunAtLoad` is
+false) — use `launchctl kickstart` (section 5) to run on demand.
 
 ---
 
 ## 4. Dry-run to validate
 
-Run the pipeline in dry-run mode — fetches and processes observations but does not write to the vault:
+Fetches and processes observations but does not write to the vault:
 
 ```bash
-cd /Volumes/SandboxData/workspaces/engineering/INI-057
-python3 engine/main.py --config configs/dyson-hope.yaml --dry-run
+cd /Volumes/SandboxData/code/observation-engine
+/opt/homebrew/bin/python3 engine/main.py --config configs/dyson-hope.yaml --dry-run
 ```
-
-Review stdout for fetch counts, processing output, and any errors before the first live run.
 
 ---
 
 ## 5. Manual one-off run
 
-To trigger the full pipeline immediately (writes to vault):
+Through launchd (uses the same env + secrets as the scheduled run):
 
 ```bash
-ANTHROPIC_API_KEY=&lt;your-anthropic-api-key&gt; \
-  python3 /Volumes/SandboxData/workspaces/engineering/INI-057/engine/main.py \
-  --config /Volumes/SandboxData/workspaces/engineering/INI-057/configs/dyson-hope.yaml
+launchctl kickstart gui/$(id -u)/com.jasonos.observation-engine.dyson-hope
 ```
 
-Logs are written to:
+Logs:
 - `stdout`: `/Volumes/SandboxData/Logs/observation-engine-dyson-hope.log`
 - `stderr`: `/Volumes/SandboxData/Logs/observation-engine-dyson-hope-error.log`
 
@@ -82,19 +95,14 @@ Logs are written to:
 ## 6. Open the vault in Obsidian
 
 1. In Obsidian, choose **Open folder as vault**.
-2. Navigate to `/Volumes/SandboxData/observation-vaults/dyson-hope/` and open it.
-3. Go to **Settings → Community plugins** and enable the **Dataview** plugin.
-
-**Note: The Dataview plugin must be enabled for the Observation Inbox and Reaction Queue views to render.** Without it, the view notes display as raw Dataview query blocks rather than live tables.
+2. Open `/Volumes/SandboxData/observation-vaults/dyson-hope-music-culture/`.
+3. **Settings → Community plugins** and enable **Dataview** (required for the
+   Observation Inbox / Reaction Queue views to render).
 
 ---
 
 ## 7. Tune the config
 
-Review subreddit selections in `configs/dyson-hope.yaml`. Current defaults:
-
-```yaml
-r/electronicmusic, r/DJs, r/techno, r/housemusic, r/aves, r/edmproduction, r/synthesizers
-```
-
-Add, remove, or reweight sources based on signal quality observed in the first week of output.
+Sources live in `configs/dyson-hope.yaml`. RSS is the only active adapter;
+Reddit and Beatport are disabled. Add, remove, or reweight feeds based on signal
+quality observed in the output.
