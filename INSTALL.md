@@ -4,15 +4,21 @@ The engine runs as a per-user launchd job on the Mac mini and fires **daily at
 08:00**. Repo lives at `/Volumes/SandboxData/code/observation-engine/`.
 
 > **One-step install / reinstall:** run the activation script. It is idempotent
-> and does everything below (deploy plist, bootstrap, verify, test-run):
+> and does everything below (install launcher to ~/bin, deploy plist, bootstrap,
+> verify, test-run):
 >
 > ```bash
 > zsh /Volumes/SandboxData/code/observation-engine/jasonos-observation-engine-activate.command
 > ```
 >
-> A plist sitting in `~/Library/LaunchAgents/` does **nothing** until it is
-> bootstrapped into launchd. Copying the file is not enough — you must run the
-> activation script (or `launchctl bootstrap`, below) at least once.
+> Two things that are easy to get wrong and will silently break the daily run:
+> 1. A plist sitting in `~/Library/LaunchAgents/` does **nothing** until it is
+>    `launchctl bootstrap`-ed. Copying the file is not enough.
+> 2. launchd cannot exec the entry script, nor open StandardOut/Err paths, on
+>    the external `/Volumes/SandboxData` volume — it fails with EX_CONFIG (78)
+>    and no output. So the launcher lives in `~/bin` and logs go to
+>    `~/Library/Logs` (internal disk). The running engine still reads config and
+>    writes the vault on `/Volumes/SandboxData` normally.
 
 ---
 
@@ -30,40 +36,36 @@ Run once on the Mac mini, against the interpreter the job uses
 
 ## 2. Secrets (no keys in the plist)
 
-The job loads secrets from `/Volumes/SandboxData/.jasonos-secrets` via `run.sh`
-(`key=value` per line, not tracked in git). Inference is local-first (Ollama)
-and falls back to the Anthropic API, so `ANTHROPIC_API_KEY` should be present
-there for the fallback path. The plist contains **no** API key.
+The job loads secrets from `/Volumes/SandboxData/.jasonos-secrets` via the
+launcher (`key=value` per line, not tracked in git). Inference is local-first
+(Ollama) and falls back to the Anthropic API, so `ANTHROPIC_API_KEY` should be
+present there for the fallback path. The plist contains **no** API key.
 
 ---
 
 ## 3. Load the launchd job (bootstrap — required)
 
 The activation script in the box above is the supported path. The manual
-equivalent, if needed:
+equivalent:
 
 ```bash
+cp /Volumes/SandboxData/code/observation-engine/run.sh ~/bin/jasonos-observation-engine.sh
+chmod 755 ~/bin/jasonos-observation-engine.sh
+mkdir -p ~/Library/Logs
 cp /Volumes/SandboxData/code/observation-engine/com.jasonos.observation-engine.dyson-hope.plist \
    ~/Library/LaunchAgents/
 
 launchctl bootout   gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist 2>/dev/null
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist
+launchctl list | grep observation-engine    # verify registered
 ```
 
-Verify it is registered:
-
-```bash
-launchctl list | grep observation-engine
-```
-
-Stop scheduling without deleting:
+The job runs daily at 08:00. It does **not** run at load time (`RunAtLoad` is
+false). Stop scheduling without deleting:
 
 ```bash
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist
 ```
-
-The job runs daily at 08:00. It does **not** run at load time (`RunAtLoad` is
-false) — use `launchctl kickstart` (section 5) to run on demand.
 
 ---
 
@@ -80,15 +82,15 @@ cd /Volumes/SandboxData/code/observation-engine
 
 ## 5. Manual one-off run
 
-Through launchd (uses the same env + secrets as the scheduled run):
+Through launchd (same env, launcher, and secrets as the scheduled run):
 
 ```bash
 launchctl kickstart gui/$(id -u)/com.jasonos.observation-engine.dyson-hope
 ```
 
-Logs:
-- `stdout`: `/Volumes/SandboxData/Logs/observation-engine-dyson-hope.log`
-- `stderr`: `/Volumes/SandboxData/Logs/observation-engine-dyson-hope-error.log`
+Logs (internal disk):
+- `stdout`: `~/Library/Logs/observation-engine-dyson-hope.log`
+- `stderr`: `~/Library/Logs/observation-engine-dyson-hope-error.log` (engine logging)
 
 ---
 

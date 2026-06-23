@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/zsh</string>
-        <string>/Volumes/SandboxData/code/observation-engine/run.sh</string>
+        <string>/Users/jcduser01/bin/jasonos-observation-engine.sh</string>
         <string>--config</string>
         <string>/Volumes/SandboxData/code/observation-engine/configs/dyson-hope.yaml</string>
     </array>
@@ -22,10 +22,10 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Volumes/SandboxData/Logs/observation-engine-dyson-hope.log</string>
+    <string>/Users/jcduser01/Library/Logs/observation-engine-dyson-hope.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Volumes/SandboxData/Logs/observation-engine-dyson-hope-error.log</string>
+    <string>/Users/jcduser01/Library/Logs/observation-engine-dyson-hope-error.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>

@@ -1,7 +1,9 @@
 #!/bin/zsh
-# run.sh — Observation Engine launcher
+# run.sh — Observation Engine launcher (canonical source)
 # Loads secrets from /Volumes/SandboxData/.jasonos-secrets (not tracked in git)
-# Called by com.jasonos.observation-engine.dyson-hope launchd daemon
+# Installed by the activation script to ~/bin/jasonos-observation-engine.sh,
+# which is what the launchd job execs (launchd cannot exec a script on the
+# external /Volumes volume at spawn time — fails EX_CONFIG/78).
 
 SECRETS="/Volumes/SandboxData/.jasonos-secrets"
 

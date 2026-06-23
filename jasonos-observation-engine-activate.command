@@ -10,19 +10,23 @@
 #
 # This script is idempotent — safe to run multiple times.
 #
+# IMPORTANT — why the launcher lives in ~/bin and logs in ~/Library/Logs:
+#   launchd cannot exec a job's entry script, nor open its StandardOut/Err
+#   paths, on the external /Volumes/SandboxData volume at spawn time — it fails
+#   with EX_CONFIG (78) and produces no output. So the launcher is installed to
+#   ~/bin (internal disk, matching every other JasonOS launchd job) and the
+#   logs are written to ~/Library/Logs. The *running* engine still reads the
+#   config and writes the vault on /Volumes/SandboxData normally.
+#
 # PREREQUISITE: /bin/zsh must have Full Disk Access.
 #   System Settings -> Privacy & Security -> Full Disk Access -> + -> /bin/zsh
 #
 # What this does:
 #   1. Preflight: SandboxData mounted, plist + run.sh + secrets present, python OK
-#   2. Deploys the plist from the repo to ~/Library/LaunchAgents/ (deployed copy)
-#   3. Boots out any prior instance, bootstraps the new one
-#   4. Verifies registration
+#   2. Installs the launcher to ~/bin/jasonos-observation-engine.sh
+#   3. Ensures ~/Library/Logs exists; deploys the plist to ~/Library/LaunchAgents/
+#   4. Boots out any prior instance, bootstraps the new one, verifies
 #   5. Kickstarts one immediate run and tails the log so you can confirm output
-#
-# Source of truth for the plist and run.sh is this repo on SandboxData.
-# ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist is a
-# deployed copy. Edit the repo source, then re-run this script to redeploy.
 # =============================================================================
 
 set -euo pipefail
@@ -31,11 +35,12 @@ REPO="/Volumes/SandboxData/code/observation-engine"
 LABEL="com.jasonos.observation-engine.dyson-hope"
 PLIST_SRC="${REPO}/${LABEL}.plist"
 PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
-RUN_SH="${REPO}/run.sh"
+LAUNCHER_SRC="${REPO}/run.sh"
+LAUNCHER_DEST="${HOME}/bin/jasonos-observation-engine.sh"
 SECRETS="/Volumes/SandboxData/.jasonos-secrets"
 PY="/opt/homebrew/bin/python3"
-OUT_LOG="/Volumes/SandboxData/Logs/observation-engine-dyson-hope.log"
-ERR_LOG="/Volumes/SandboxData/Logs/observation-engine-dyson-hope-error.log"
+OUT_LOG="${HOME}/Library/Logs/observation-engine-dyson-hope.log"
+ERR_LOG="${HOME}/Library/Logs/observation-engine-dyson-hope-error.log"
 UID_VAL=$(id -u)
 
 echo ""
@@ -46,98 +51,58 @@ echo ""
 
 # -- Preflight ----------------------------------------------------------------
 echo "[ 1/5 ] Preflight checks..."
+[ -f "$PLIST_SRC" ]   || { echo "  x Plist source missing: $PLIST_SRC (SandboxData mounted?)"; exit 1; }
+[ -f "$LAUNCHER_SRC" ]|| { echo "  x Launcher source missing: $LAUNCHER_SRC"; exit 1; }
+[ -f "$SECRETS" ]     || { echo "  x Secrets file missing: $SECRETS"; exit 1; }
+[ -x "$PY" ]          || { echo "  x Python not found/executable: $PY"; exit 1; }
+echo "  ok plist, launcher, secrets, python all present"
 
-if [ ! -f "$PLIST_SRC" ]; then
-  echo "  x Plist source not found: $PLIST_SRC (is SandboxData mounted?)"
-  exit 1
-fi
-echo "  ok Plist source: $PLIST_SRC"
+# -- Install launcher to ~/bin (internal disk) --------------------------------
+echo "[ 2/5 ] Installing launcher to ~/bin..."
+mkdir -p "${HOME}/bin"
+cp "$LAUNCHER_SRC" "$LAUNCHER_DEST"
+chmod 755 "$LAUNCHER_DEST"
+echo "  ok $LAUNCHER_DEST"
 
-if [ ! -f "$RUN_SH" ]; then
-  echo "  x Launcher not found: $RUN_SH"
-  exit 1
-fi
-echo "  ok Launcher: $RUN_SH"
-
-if [ ! -f "$SECRETS" ]; then
-  echo "  x Secrets file not found: $SECRETS"
-  echo "    run.sh loads ANTHROPIC_API_KEY (fallback) and any keys from here."
-  exit 1
-fi
-echo "  ok Secrets file present: $SECRETS"
-
-if [ ! -x "$PY" ]; then
-  echo "  x Python interpreter not found/executable: $PY"
-  exit 1
-fi
-echo "  ok Python: $PY"
-
-# -- Deploy plist -------------------------------------------------------------
-echo "[ 2/5 ] Deploying plist..."
-mkdir -p "${HOME}/Library/LaunchAgents"
+# -- Deploy plist + ensure log dir --------------------------------------------
+echo "[ 3/5 ] Deploying plist and log directory..."
+mkdir -p "${HOME}/Library/LaunchAgents" "${HOME}/Library/Logs"
 cp "$PLIST_SRC" "$PLIST_DEST"
 chmod 644 "$PLIST_DEST"
-echo "  ok Deployed: $PLIST_DEST"
+echo "  ok $PLIST_DEST"
 
 # -- Bootstrap LaunchAgent ----------------------------------------------------
-echo "[ 3/5 ] Bootstrapping LaunchAgent..."
-
-launchctl bootout "gui/${UID_VAL}" "$PLIST_DEST" 2>/dev/null && \
-  echo "  .. booted out previous instance" || true
-
+echo "[ 4/5 ] Bootstrapping LaunchAgent..."
+launchctl bootout "gui/${UID_VAL}" "$PLIST_DEST" 2>/dev/null && echo "  .. booted out previous instance" || true
+sleep 2
 if launchctl bootstrap "gui/${UID_VAL}" "$PLIST_DEST"; then
-  echo "  ok Bootstrapped: $LABEL"
+  echo "  ok bootstrapped: $LABEL"
 else
-  echo "  x launchctl bootstrap failed"
-  echo "    Ensure /bin/zsh has Full Disk Access, then re-run."
+  echo "  x launchctl bootstrap failed (ensure /bin/zsh has Full Disk Access, then re-run)"
   exit 1
 fi
-
-# -- Verify registration ------------------------------------------------------
-echo "[ 4/5 ] Verifying registration..."
-sleep 1
-if launchctl list | grep -q "$LABEL"; then
-  echo "  ok $LABEL is registered (will fire daily at 08:00)"
-else
-  echo "  x Agent not found in launchctl list after bootstrap"
-  exit 1
-fi
+launchctl list | grep -q "$LABEL" && echo "  ok registered (fires daily at 08:00)" || { echo "  x not registered"; exit 1; }
 
 # -- Immediate verification run -----------------------------------------------
-echo "[ 5/5 ] Kickstarting one immediate run to confirm output..."
+echo "[ 5/5 ] Kickstarting one immediate run..."
 launchctl kickstart "gui/${UID_VAL}/${LABEL}"
-echo "  .. waiting up to 90s for the run to write logs..."
-for i in {1..18}; do
-  sleep 5
-  if [ -f "$OUT_LOG" ]; then break; fi
-done
-
+sleep 8
 echo ""
-echo "---- stderr (last 20 lines) ----"
-[ -f "$ERR_LOG" ] && tail -20 "$ERR_LOG" || echo "(no stderr log yet)"
-echo "---- stdout (last 25 lines) ----"
-[ -f "$OUT_LOG" ] && tail -25 "$OUT_LOG" || echo "(no stdout log yet — check again in a minute)"
+echo "---- ${ERR_LOG} (engine log, last 15 lines) ----"
+[ -f "$ERR_LOG" ] && tail -15 "$ERR_LOG" || echo "(no log yet — check again shortly)"
 
 echo ""
 echo "============================================="
-echo " Observation Engine is ACTIVE."
+echo " Observation Engine is ACTIVE — daily at 08:00"
 echo "============================================="
+echo " Launcher:  $LAUNCHER_DEST   (copied from ${LAUNCHER_SRC})"
+echo " Plist:     $PLIST_DEST"
+echo " Logs:      $OUT_LOG"
+echo "            $ERR_LOG"
+echo " Vault:     /Volumes/SandboxData/observation-vaults/dyson-hope-music-culture/Observation Inbox"
 echo ""
-echo " Schedule:       daily at 08:00 (StartCalendarInterval)"
-echo " Plist source:   $PLIST_SRC   <- edit here, then re-run this script"
-echo " Plist deployed: $PLIST_DEST"
-echo " Vault output:   /Volumes/SandboxData/observation-vaults/dyson-hope-music-culture/Observation Inbox"
-echo " stdout log:     $OUT_LOG"
-echo " stderr log:     $ERR_LOG"
-echo ""
-echo " Manual immediate run:"
-echo "   launchctl kickstart gui/${UID_VAL}/${LABEL}"
-echo ""
-echo " Stop scheduling (without deleting):"
-echo "   launchctl bootout gui/${UID_VAL} $PLIST_DEST"
-echo ""
-echo " Re-run this activation after a restart or plist edit:"
-echo "   zsh $REPO/jasonos-observation-engine-activate.command"
+echo " Manual run:  launchctl kickstart gui/${UID_VAL}/${LABEL}"
+echo " Stop:        launchctl bootout gui/${UID_VAL} $PLIST_DEST"
 echo "============================================="
 echo ""
 echo " Press any key to close..."
