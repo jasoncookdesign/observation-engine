@@ -16,7 +16,7 @@ from praw.exceptions import PRAWException
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "script:JasonOS.ObservationEngine:v1.0 (by u/jcduser01)"
+USER_AGENT = "script:observation-engine:v1.0"
 
 
 def fetch(config: dict) -> list[dict]:

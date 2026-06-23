@@ -1,4 +1,4 @@
-"""INI-076-R1 hardening — the engine must tolerate lens entries returned as
+"""Hardening — the engine must tolerate lens entries returned as
 name-bearing objects (e.g. llama3.1:8b emits [{"name": "..."}]) instead of
 crashing _match_lenses on `.lower()`. Regression for the 2026-06-23 finding."""
 import sys, tempfile, unittest

@@ -1,4 +1,4 @@
-"""INI-076 Phase 2 — tests for the inference backend abstraction.
+"""Tests for the inference backend abstraction.
 Run (from engine/): python -m unittest tests.test_inference -v
 Mocks backend boundaries so tests run with no network / no ollama|anthropic pkgs.
 """

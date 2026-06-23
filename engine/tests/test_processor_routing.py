@@ -1,4 +1,4 @@
-"""INI-076 Phase 2 — integration test: process() routes through inference
+"""Integration test: process() routes through inference
 and builds the vault-ready dict from local-or-API JSON identically."""
 import sys, tempfile, unittest
 from pathlib import Path

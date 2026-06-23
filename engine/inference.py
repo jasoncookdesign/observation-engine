@@ -1,7 +1,7 @@
 """
 Inference backend abstraction for the Observation Engine.
 
-INI-076 Phase 2 — routes structured, closed-domain generation to a local
+Routes structured, closed-domain generation to a local
 Ollama model when available, falling back to the Anthropic API otherwise.
 The system/user prompts and the JSON output contract are identical across
 backends; callers parse the returned text exactly as before.
