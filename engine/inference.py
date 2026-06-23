@@ -45,14 +45,38 @@ def _model_matches(resident_name: str, wanted: str) -> bool:
     return resident_name.split(":")[0] == wanted.split(":")[0]
 
 
+def _resident_model_id(m) -> str:
+    """Extract a resident model's tag across ollama-python response shapes.
+    ollama-python >= 0.4 returns `Model` objects whose tag is the `.model`
+    attribute; older versions returned dicts keyed `name` (or `model`)."""
+    val = getattr(m, "model", None)
+    if val:
+        return val
+    if isinstance(m, dict):
+        return m.get("name") or m.get("model") or ""
+    return ""
+
+
+def _list_resident_models(client) -> list:
+    """Return resident model entries across ollama-python response shapes.
+    `ListResponse` exposes `.models`; older dict responses use `["models"]`."""
+    resp = client.list()
+    models = getattr(resp, "models", None)
+    if models is None and hasattr(resp, "get"):
+        models = resp.get("models", [])
+    return list(models or [])
+
+
 def local_available(timeout: float = _AVAIL_TIMEOUT_S) -> bool:
     """True iff the Ollama server responds and LOCAL_MODEL is resident."""
     try:
         import ollama
 
         client = ollama.Client(host=OLLAMA_HOST, timeout=timeout)
-        models = client.list().get("models", [])
-        return any(_model_matches(m.get("name", ""), LOCAL_MODEL) for m in models)
+        models = _list_resident_models(client)
+        return any(
+            _model_matches(_resident_model_id(m), LOCAL_MODEL) for m in models
+        )
     except Exception as exc:  # pragma: no cover - exercised via mock
         logger.debug("Ollama availability check failed: %s", exc)
         return False
@@ -71,7 +95,20 @@ def _ollama_generate(system_prompt: str, user_prompt: str, max_tokens: int) -> s
         format="json",
         options={"temperature": 0, "num_predict": max_tokens},
     )
-    return resp["message"]["content"].strip()
+    return _chat_content(resp).strip()
+
+
+def _chat_content(resp) -> str:
+    """Extract message content across ollama-python response shapes.
+    `ChatResponse` exposes `.message.content`; older dict responses use
+    `["message"]["content"]`."""
+    msg = getattr(resp, "message", None)
+    if msg is not None:
+        content = getattr(msg, "content", None)
+        if content is None and hasattr(msg, "get"):
+            content = msg.get("content", "")
+        return content or ""
+    return resp["message"]["content"] or ""
 
 
 def _anthropic_generate(system_prompt: str, user_prompt: str, max_tokens: int) -> str:

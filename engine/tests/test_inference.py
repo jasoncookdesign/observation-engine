@@ -64,6 +64,50 @@ class TestLocalAvailable(unittest.TestCase):
             self.assertFalse(inference.local_available())
 
 
+class _Model:
+    """Mimics ollama-python >= 0.4 `Model` (tag is `.model`, no `name`)."""
+    def __init__(self, model): self.model = model
+
+
+class _ListResponse:
+    """Mimics ollama-python >= 0.4 `ListResponse` (`.models`, no dict)."""
+    def __init__(self, models): self.models = models
+
+
+class TestLocalAvailableObjectShape(unittest.TestCase):
+    """Regression for the 2026-06-23 defect: real ollama-python returns Model
+    objects keyed `.model`, not dicts keyed `name`. The old fixtures masked it."""
+    def _fake(self, names):
+        f = mock.MagicMock()
+        f.Client.return_value.list.return_value = _ListResponse([_Model(n) for n in names])
+        return f
+
+    def test_true_when_resident_object_shape(self):
+        with mock.patch.dict(sys.modules, {"ollama": self._fake(["llama3.1:8b", "qwen2.5:14b"])}), \
+             mock.patch.object(inference, "LOCAL_MODEL", "llama3.1:8b"):
+            self.assertTrue(inference.local_available())
+
+    def test_false_when_absent_object_shape(self):
+        with mock.patch.dict(sys.modules, {"ollama": self._fake(["qwen2.5:14b"])}), \
+             mock.patch.object(inference, "LOCAL_MODEL", "llama3.1:8b"):
+            self.assertFalse(inference.local_available())
+
+
+class TestShapeHelpers(unittest.TestCase):
+    def test_resident_model_id(self):
+        self.assertEqual(inference._resident_model_id(_Model("llama3.1:8b")), "llama3.1:8b")
+        self.assertEqual(inference._resident_model_id({"name": "llama3.1:8b"}), "llama3.1:8b")
+        self.assertEqual(inference._resident_model_id({"model": "llama3.1:8b"}), "llama3.1:8b")
+        self.assertEqual(inference._resident_model_id(object()), "")
+
+    def test_chat_content_object_and_dict(self):
+        msg = type("M", (), {"content": " {\"x\":1} "})()
+        obj_resp = type("R", (), {"message": msg})()
+        self.assertEqual(inference._chat_content(obj_resp).strip(), '{"x":1}')
+        dict_resp = {"message": {"content": " {\"y\":2} "}}
+        self.assertEqual(inference._chat_content(dict_resp).strip(), '{"y":2}')
+
+
 class TestAnthropicGuard(unittest.TestCase):
     def test_requires_key(self):
         with mock.patch.dict("os.environ", {}, clear=True):

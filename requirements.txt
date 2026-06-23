@@ -4,7 +4,10 @@
 anthropic
 beautifulsoup4
 feedparser
-ollama
+# Pinned: list() returns Model objects keyed `.model` (not dict `name`); a
+# major/minor bump can change that shape and silently break local routing.
+# See inference._resident_model_id / _chat_content. Validated against 0.6.2.
+ollama>=0.6.2,<0.7
 praw
 pyyaml
 requests
