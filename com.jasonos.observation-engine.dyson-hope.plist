@@ -21,9 +21,6 @@
         <integer>0</integer>
     </dict>
 
-    <key>WorkingDirectory</key>
-    <string>/Volumes/SandboxData/code/observation-engine</string>
-
     <key>StandardOutPath</key>
     <string>/Volumes/SandboxData/Logs/observation-engine-dyson-hope.log</string>
 
