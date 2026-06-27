@@ -8,6 +8,7 @@ feedparser
 # major/minor bump can change that shape and silently break local routing.
 # See inference._resident_model_id / _chat_content. Validated against 0.6.2.
 ollama>=0.6.2,<0.7
-praw
+# praw removed (INI-100): the Reddit adapter now uses unauthenticated public
+# .json endpoints via requests — no registered app, no client_id/secret.
 pyyaml
 requests

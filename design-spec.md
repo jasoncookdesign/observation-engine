@@ -115,17 +115,24 @@ sources:
         slug: "djmag"
 
   reddit:
-    enabled: false     # requires API credentials (client_id + client_secret)
-    subreddits:
-      - electronicmusic
-      - DJs
-      - techno
-      - housemusic
-      - aves
+    enabled: true      # unauthenticated public .json — no credentials/registered app
+    subreddits:        # the live set (see configs/dyson-hope.yaml for the tuned list)
+      - ableton
+      - musicproduction
       - edmproduction
-      - synthesizers
-    post_limit: 25
-    min_score: 50          # minimum upvotes to include
+      - aves
+      - electronicmusic
+      - breakbeat
+      - DJs
+    time_filter: "week"     # weekly top window
+    fetch_limit: 25         # listing rows requested per sub
+    top_n_per_sub: 5        # keep best-N per sub (NOT a global min_score — cross-sub
+                            # dynamic range is too wide for a flat threshold)
+    min_score_floor: 5      # low noise floor only
+    funnel:                 # precision relevance funnel (see relevance.py)
+      enabled: true
+      triage_threshold: 3   # reaction-worthiness 0-5; >=3 survives to deep-dive
+      deep_dive: true       # fetch comment trees for survivors
 
   beatport:
     enabled: false     # Cloudflare 403 — requires browser automation or official API key
@@ -267,17 +274,20 @@ observation-engine/
 │   ├── config.py            # config loader + validator
 │   ├── inference.py         # inference backend abstraction (Ollama / Anthropic)
 │   ├── processor.py         # processing agent
+│   ├── relevance.py         # Reddit relevance funnel (wire pre-rank, triage gate, feedback)
 │   ├── writer.py            # Obsidian note writer
 │   ├── adapters/
 │   │   ├── __init__.py
 │   │   ├── rss.py
-│   │   ├── reddit.py
+│   │   ├── reddit.py        # unauthenticated public .json
 │   │   └── beatport.py
 │   └── tests/
 │       ├── __init__.py
 │       ├── test_inference.py
 │       ├── test_processor_lenses.py
-│       └── test_processor_routing.py
+│       ├── test_processor_routing.py
+│       ├── test_reddit_adapter.py
+│       └── test_relevance.py
 └── configs/
     └── dyson-hope.yaml      # example instance config
 ```
@@ -289,7 +299,8 @@ observation-engine/
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Beatport access | Web scrape (requests + BeautifulSoup) | No public API; HTML chart pages are stable and structured |
-| Reddit access | PRAW (official Python Reddit API wrapper) | Clean, rate-limit-aware, no key scraping |
+| Reddit access | Unauthenticated public `.json` endpoints (`requests`) | No registered app or OAuth credentials (the friction that kept the source disabled); weekly `t=week`, top-N per sub, persistent session + retry/backoff + HTML-not-JSON guard; fail-open. ToS disposition (accept + document) recorded in JasonOS governance INI-100. |
+| Reddit relevance | Precision funnel: wire pre-rank → lens-anchored LLM triage gate → comment deep-dive, with a vault-status feedback loop | Upvotes signal popularity, not reaction-worthiness; the funnel spends inference and calls only on posts likely worth a creative reaction, and sharpens from the operator's reacted/ignored marks |
 | Vault write method | Direct file write (pathlib) | Obsidian vaults are local folders; no API needed |
 | Inference routing | Ollama local-first (`llama3.1:8b`); Anthropic `claude-haiku-4-5-20251001` fallback | Reduces API cost and latency when a local server is available; fails open so a stopped Ollama never breaks a run |
 | Scheduling | launchd plist | Native macOS; no external scheduler dependency |
