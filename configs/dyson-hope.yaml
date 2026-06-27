@@ -51,38 +51,49 @@ sources:
       # - name: "MusicTech"            # SSL hostname mismatch
 
   reddit:
-    enabled: true          # INI-100: re-enabled (was false behind OAuth friction).
-                           # Goes live on the Mac mini when the CEO merges this PR.
-    # INI-100: unauthenticated public .json access — no client_id/client_secret,
-    # no registered Reddit app. ToS disposition (accept + document) recorded in
-    # governance: portfolio/INI-100.md § Governance notes.
+    enabled: false
+    # ── REDDIT IS DARK (INI-100, decision 2026-06-27) ────────────────────────
+    # No viable access path exists. Live verification on 2026-06-27 closed all three:
+    #   1. Unauthenticated `.json`  — hard-blocked by Reddit (HTTP 403 + HTML
+    #      challenge) on every User-Agent and host, from both datacenter and the
+    #      mini's residential IP.
+    #   2. Authenticated OAuth      — requires registering an API app, now gated by
+    #      Reddit's Responsible Builder Policy: a fresh account cannot create one
+    #      (account-age/karma minimums + a manual pre-approval that takes weeks and
+    #      is commonly denied for hobbyist/personal use). The CEO will not use a
+    #      primary account for this.
+    #   3. Public RSS (top/.rss)    — returns data but Reddit rate-limits it
+    #      aggressively: 429 after ~2 subs even with 3s spacing + backoff, so it
+    #      cannot reliably cover the sub set. Not dependable.
+    # Decision: leave Reddit DARK. The engine skips this adapter (enabled:false).
+    # The relevance funnel (engine/relevance.py) and this adapter remain in the
+    # tree, dormant and tested — ready to re-light if Reddit access ever opens
+    # (e.g. an approved API app). To re-enable then: set enabled:true, choose an
+    # `access` mode, and supply credentials if OAuth. ToS/decision record: INI-100.
     #
-    # The live 7 subreddits (CONFIRM membership at PR review). Reconciled from the
-    # prior 26-sub list to the spike's working set; `abletonlive` corrected to
-    # `ableton` (the live sub). Per-sub traffic notes are YAML comments (the old
-    # inline annotations broke the subreddit strings).
+    # access: rss   # the last-attempted mode; inert while disabled
+
+    # The live 7 subreddits (CONFIRM membership at PR review). `abletonlive`
+    # corrected to `ableton` (the live sub).
     subreddits:
-      - ableton            # was abletonlive (non-existent); production/DAW
+      - ableton            # production/DAW
       - musicproduction    # production craft + discussion
       - edmproduction      # producer technique
-      - aves               # high-traffic electronic culture (widest dynamic range)
+      - aves               # high-traffic electronic culture
       - electronicmusic    # broad scene + discourse
       - breakbeat          # CEO genre focus
       - DJs                # performer/practice discussion
 
-    # Weekly top, top-N per sub (NOT a global min_score — cross-sub dynamic range
-    # is too large for a flat threshold). min_score_floor is a low NOISE floor.
-    time_filter: "week"
-    fetch_limit: 25         # listing rows requested per sub before top-N
+    time_filter: "week"     # top/.rss window (the feed is pre-sorted by top)
     top_n_per_sub: 5        # keep the best N per sub (every community represented)
-    min_score_floor: 5      # discard near-zero-score noise only; NOT a popularity gate
+    request_delay_s: 3      # polite spacing between sub feeds (Reddit 429s cold bursts)
 
     # Relevance funnel (INI-100) — precision-first gating before the processor.
     funnel:
       enabled: true
-      triage_threshold: 3   # reaction-worthiness 0-5; >=3 survives to deep-dive
-      deep_dive: true       # fetch comment trees for survivors (Stage 3)
-      # max_survivors: 20   # optional hard cap on deep-dives/processing per run
+      triage_threshold: 3   # reaction-worthiness 0-5; >=3 survives
+      deep_dive: false      # Stage-3 comment deep-dive needs .json (403-blocked) — off in RSS mode
+      # max_survivors: 20   # optional hard cap on processing per run
       interest_taxonomy:    # Stage-1 title-match keywords (CEO interests)
         - breakbeat
         - underground

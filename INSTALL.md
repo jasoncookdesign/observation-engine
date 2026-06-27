@@ -110,8 +110,9 @@ Logs (internal disk):
 
 ## 7. Tune the config
 
-Sources live in `configs/dyson-hope.yaml`. RSS and Reddit are active; Beatport is
-disabled. Reddit uses unauthenticated public `.json` (no credentials) and runs a
-precision relevance funnel (`sources.reddit.funnel`) — tune `top_n_per_sub`,
-`min_score_floor`, and `funnel.triage_threshold` based on the candidate quality
-observed in the output. Add, remove, or reweight RSS feeds the same way.
+Sources live in `configs/dyson-hope.yaml`. RSS is active; Reddit and Beatport are
+disabled. Reddit is **dark** — no viable access path (unauthenticated `.json` is
+403-blocked, OAuth app creation is gated by Reddit's Responsible Builder Policy, and
+public RSS rate-limits to unusability); the adapter and its relevance funnel are
+retained dormant for if access ever opens. Add, remove, or reweight RSS feeds based
+on signal quality observed in the output.

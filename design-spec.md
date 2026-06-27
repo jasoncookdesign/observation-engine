@@ -115,7 +115,8 @@ sources:
         slug: "djmag"
 
   reddit:
-    enabled: true      # unauthenticated public .json — no credentials/registered app
+    enabled: false     # DARK — no viable access path (see Key Decisions); funnel dormant
+    # access: rss      # last-attempted mode; inert while disabled
     subreddits:        # the live set (see configs/dyson-hope.yaml for the tuned list)
       - ableton
       - musicproduction
@@ -124,15 +125,13 @@ sources:
       - electronicmusic
       - breakbeat
       - DJs
-    time_filter: "week"     # weekly top window
-    fetch_limit: 25         # listing rows requested per sub
-    top_n_per_sub: 5        # keep best-N per sub (NOT a global min_score — cross-sub
-                            # dynamic range is too wide for a flat threshold)
-    min_score_floor: 5      # low noise floor only
+    time_filter: "week"     # top/.rss window (feed is pre-sorted by top)
+    top_n_per_sub: 5        # keep best-N per sub (feed order)
+    request_delay_s: 3      # spacing between sub feeds (Reddit 429s cold bursts)
     funnel:                 # precision relevance funnel (see relevance.py)
       enabled: true
-      triage_threshold: 3   # reaction-worthiness 0-5; >=3 survives to deep-dive
-      deep_dive: true       # fetch comment trees for survivors
+      triage_threshold: 3   # reaction-worthiness 0-5; >=3 survives
+      deep_dive: false      # Stage-3 comment deep-dive needs .json (403-blocked)
 
   beatport:
     enabled: false     # Cloudflare 403 — requires browser automation or official API key
@@ -279,7 +278,7 @@ observation-engine/
 │   ├── adapters/
 │   │   ├── __init__.py
 │   │   ├── rss.py
-│   │   ├── reddit.py        # unauthenticated public .json
+│   │   ├── reddit.py        # public RSS feeds (top/.rss)
 │   │   └── beatport.py
 │   └── tests/
 │       ├── __init__.py
@@ -299,7 +298,7 @@ observation-engine/
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Beatport access | Web scrape (requests + BeautifulSoup) | No public API; HTML chart pages are stable and structured |
-| Reddit access | Unauthenticated public `.json` endpoints (`requests`) | No registered app or OAuth credentials (the friction that kept the source disabled); weekly `t=week`, top-N per sub, persistent session + retry/backoff + HTML-not-JSON guard; fail-open. ToS disposition (accept + document) recorded in JasonOS governance INI-100. |
+| Reddit access | **None — source dark** (`enabled: false`) | Live verification (2026-06-27) closed all three paths: unauthenticated `.json` → 403 edge-block (every UA/host/IP); OAuth → API-app creation gated by Reddit's Responsible Builder Policy (account-age/karma minimums + weeks-long manual pre-approval, commonly denied); public RSS → returns data but rate-limited to ~2 subs before sustained 429s. No dependable path, so Reddit is left dark. The adapter (RSS impl) and the relevance funnel are retained dormant and tested, ready to re-light if access opens. Decision record: JasonOS governance INI-100. |
 | Reddit relevance | Precision funnel: wire pre-rank → lens-anchored LLM triage gate → comment deep-dive, with a vault-status feedback loop | Upvotes signal popularity, not reaction-worthiness; the funnel spends inference and calls only on posts likely worth a creative reaction, and sharpens from the operator's reacted/ignored marks |
 | Vault write method | Direct file write (pathlib) | Obsidian vaults are local folders; no API needed |
 | Inference routing | Ollama local-first (`llama3.1:8b`); Anthropic `claude-haiku-4-5-20251001` fallback | Reduces API cost and latency when a local server is available; fails open so a stopped Ollama never breaks a run |
