@@ -51,39 +51,49 @@ sources:
       # - name: "MusicTech"            # SSL hostname mismatch
 
   reddit:
-    enabled: false
-    client_id: "__SET_BY_CEO__"
-    client_secret: "__SET_BY_CEO__"
+    enabled: true          # INI-100: re-enabled (was false behind OAuth friction).
+                           # Goes live on the Mac mini when the CEO merges this PR.
+    # INI-100: unauthenticated public .json access — no client_id/client_secret,
+    # no registered Reddit app. ToS disposition (accept + document) recorded in
+    # governance: portfolio/INI-100.md § Governance notes.
+    #
+    # The live 7 subreddits (CONFIRM membership at PR review). Reconciled from the
+    # prior 26-sub list to the spike's working set; `abletonlive` corrected to
+    # `ableton` (the live sub). Per-sub traffic notes are YAML comments (the old
+    # inline annotations broke the subreddit strings).
     subreddits:
-      - abletonlive
-      - electronicmusic
-      - aves
-      - bassheavy
-      - basshouse
-      - breakbeat
-      - DJs
-      - DnB
-      - dubstep
-      - EDM
-      - edmproduction
-      - futurebass
-      - futuregarage
-      - House
-      - housemusic
-      - modular
-      - MusicGear
-      - musicproduction
-      - NeuroFunk
-      - serum
-      - synthesizers
-      - tech_house
-      - Techno
-      - TechnoProduction
-      - trap
-      - ukbass
-      
-    post_limit: 25
-    min_score: 50          # minimum upvotes to include
+      - ableton            # was abletonlive (non-existent); production/DAW
+      - musicproduction    # production craft + discussion
+      - edmproduction      # producer technique
+      - aves               # high-traffic electronic culture (widest dynamic range)
+      - electronicmusic    # broad scene + discourse
+      - breakbeat          # CEO genre focus
+      - DJs                # performer/practice discussion
+
+    # Weekly top, top-N per sub (NOT a global min_score — cross-sub dynamic range
+    # is too large for a flat threshold). min_score_floor is a low NOISE floor.
+    time_filter: "week"
+    fetch_limit: 25         # listing rows requested per sub before top-N
+    top_n_per_sub: 5        # keep the best N per sub (every community represented)
+    min_score_floor: 5      # discard near-zero-score noise only; NOT a popularity gate
+
+    # Relevance funnel (INI-100) — precision-first gating before the processor.
+    funnel:
+      enabled: true
+      triage_threshold: 3   # reaction-worthiness 0-5; >=3 survives to deep-dive
+      deep_dive: true       # fetch comment trees for survivors (Stage 3)
+      # max_survivors: 20   # optional hard cap on deep-dives/processing per run
+      interest_taxonomy:    # Stage-1 title-match keywords (CEO interests)
+        - breakbeat
+        - underground
+        - ableton
+        - sampling
+        - rave
+        - sound design
+        - mixing
+        - label
+        - culture
+        - scene
 
   beatport:
     enabled: false  # Cloudflare 403 — requires browser automation or official API key

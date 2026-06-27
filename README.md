@@ -8,10 +8,11 @@ Built for [JasonOS](https://github.com/jasoncookdesign) to automate noticing —
 
 ## How it works
 
-1. **Adapters** fetch raw items from configured sources. The RSS adapter is active; Reddit and Beatport adapters are implemented but disabled pending API credentials and access resolution respectively.
-2. **Processor** routes each item through the inference backend (local Ollama model when available, Anthropic API as fallback) to produce a one-sentence observation summary, topic tags, an interest level (1–5), selected interpretive lenses, lens-scoped questions, and expanded context.
-3. **Writer** renders each processed observation as a Markdown note with YAML frontmatter and writes it to an Obsidian vault inbox folder.
-4. **Deduplication** — the engine reads existing vault notes on each run and skips any `source_url` already present.
+1. **Adapters** fetch raw items from configured sources. The RSS and Reddit adapters are active; the Beatport adapter is implemented but disabled pending access resolution. Reddit uses unauthenticated public `.json` endpoints (no API credentials, no registered app).
+2. **Relevance funnel** (Reddit) — before processing, Reddit items pass a precision-first funnel: a free wire-metric pre-rank, a lens-anchored LLM triage gate (reaction-worthiness, not popularity), and a comment deep-dive on survivors. A feedback loop harvests the vault's reacted/ignored status chain as few-shot exemplars so the gate sharpens over time. Other sources skip the funnel.
+3. **Processor** routes each item through the inference backend (local Ollama model when available, Anthropic API as fallback) to produce a one-sentence observation summary, topic tags, an interest level (1–5), selected interpretive lenses, lens-scoped questions, and expanded context.
+4. **Writer** renders each processed observation as a Markdown note with YAML frontmatter and writes it to an Obsidian vault inbox folder.
+5. **Deduplication** — the engine reads existing vault notes on each run and skips any `source_url` already present.
 
 The engine is parameterized via instance config — deploying for a new subject requires a new `configs/{name}.yaml`, not a fork.
 
@@ -25,10 +26,11 @@ engine/
   config.py         # Config loader and validator
   inference.py      # Inference backend abstraction (Ollama-first, Anthropic fallback)
   processor.py      # Observation processing agent
+  relevance.py      # Reddit relevance funnel (wire pre-rank, triage gate, feedback)
   writer.py         # Obsidian vault note writer
   adapters/
     rss.py          # RSS/Atom feed adapter (active)
-    reddit.py       # Reddit adapter (disabled — requires API credentials)
+    reddit.py       # Reddit adapter (active — unauthenticated public .json)
     beatport.py     # Beatport adapter (disabled — Cloudflare 403)
   tests/            # Unit and integration tests (stdlib unittest)
 configs/
@@ -48,10 +50,10 @@ pip3 install -r requirements.txt
 Or individually:
 
 ```bash
-pip3 install feedparser anthropic pyyaml requests beautifulsoup4 praw "ollama>=0.6.2,<0.7"
+pip3 install feedparser anthropic pyyaml requests beautifulsoup4 "ollama>=0.6.2,<0.7"
 ```
 
-The `ollama` package is required for local inference; `praw` is required for the Reddit adapter (disabled by default).
+The `ollama` package is required for local inference. The Reddit adapter uses `requests` against public `.json` endpoints — no Reddit-specific dependency.
 
 ### 2. Create an instance config
 
