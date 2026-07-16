@@ -115,5 +115,76 @@ class TestAnthropicGuard(unittest.TestCase):
                 inference._anthropic_generate("sys", "user", 256)
 
 
+class TestModelSelector(unittest.TestCase):
+    """Tests for the generic model-selector seam.
+
+    Covers set_model_selector / _resolve_local_model integration through
+    generate_json. All tests reset the module-level selector in setUp and
+    tearDown so state never leaks across the suite.
+    """
+
+    def setUp(self):
+        # Ensure the selector starts clean for every test in this class.
+        inference.set_model_selector(None)
+
+    def tearDown(self):
+        # Always reset to None even when a test raises, to avoid state leak
+        # into other test classes that mock local_available / _ollama_generate.
+        inference.set_model_selector(None)
+
+    def test_selector_tag_forwarded_to_local_available_and_ollama_generate(self):
+        """(a) Selector returning a tag → local_available + _ollama_generate both
+        receive model=<tag>."""
+        inference.set_model_selector(lambda _: "qwen2.5:14b")
+        with mock.patch.object(inference, "local_available", return_value=True) as la, \
+             mock.patch.object(inference, "_ollama_generate",
+                               return_value='{"ok": 1}') as og, \
+             mock.patch.object(inference, "_anthropic_generate") as ag:
+            text, backend = inference.generate_json("sys", "user")
+        self.assertEqual(backend, "ollama")
+        la.assert_called_once_with(model="qwen2.5:14b")
+        og.assert_called_once_with("sys", "user", inference.MAX_TOKENS,
+                                   model="qwen2.5:14b")
+        ag.assert_not_called()
+
+    def test_selector_returning_none_falls_back_to_local_model_constant(self):
+        """(b) Selector returning None → LOCAL_MODEL used (fail-open within resolver)."""
+        inference.set_model_selector(lambda _: None)
+        with mock.patch.object(inference, "local_available", return_value=True) as la, \
+             mock.patch.object(inference, "_ollama_generate",
+                               return_value='{"ok": 1}') as og:
+            text, backend = inference.generate_json("sys", "user")
+        self.assertEqual(backend, "ollama")
+        la.assert_called_once_with(model=inference.LOCAL_MODEL)
+        og.assert_called_once_with("sys", "user", inference.MAX_TOKENS,
+                                   model=inference.LOCAL_MODEL)
+
+    def test_selector_raising_falls_back_to_local_model_constant(self):
+        """(c) Selector that raises → LOCAL_MODEL used; run continues (fail-open)."""
+        def _boom(_):
+            raise RuntimeError("selector exploded")
+        inference.set_model_selector(_boom)
+        with mock.patch.object(inference, "local_available", return_value=True) as la, \
+             mock.patch.object(inference, "_ollama_generate",
+                               return_value='{"ok": 1}') as og:
+            text, backend = inference.generate_json("sys", "user")
+        self.assertEqual(backend, "ollama")
+        la.assert_called_once_with(model=inference.LOCAL_MODEL)
+        og.assert_called_once_with("sys", "user", inference.MAX_TOKENS,
+                                   model=inference.LOCAL_MODEL)
+
+    def test_no_selector_uses_local_model_constant(self):
+        """(d) No selector installed → LOCAL_MODEL used; byte-identical to original."""
+        # _local_model_selector is None (set in setUp)
+        with mock.patch.object(inference, "local_available", return_value=True) as la, \
+             mock.patch.object(inference, "_ollama_generate",
+                               return_value='{"ok": 1}') as og:
+            text, backend = inference.generate_json("sys", "user")
+        self.assertEqual(backend, "ollama")
+        la.assert_called_once_with(model=inference.LOCAL_MODEL)
+        og.assert_called_once_with("sys", "user", inference.MAX_TOKENS,
+                                   model=inference.LOCAL_MODEL)
+
+
 if __name__ == "__main__":
     unittest.main()
