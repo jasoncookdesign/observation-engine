@@ -44,6 +44,12 @@ Tasks:
 4. Select 1–3 lenses from the Lens Library most applicable to this observation.
 5. For each selected lens, generate 2–3 interpretive questions.
 6. Write 2–4 sentences of expanded context from the source.
+7. Extract 1–5 factual claims directly supported by the source text.
+8. Extract named entities (people, labels, artists, platforms, places, or organizations).
+9. Assign relevance values from: dj_culture, music_production, music_business,
+   artist_identity, club_culture, rave_history, technology, platform_economics,
+   promotion, event_operations, label_operations.
+10. Assign time_sensitivity: high, medium, low, or unknown.
 
 Return as JSON only — no preamble, no commentary:
 {{
@@ -55,7 +61,11 @@ Return as JSON only — no preamble, no commentary:
     "<lens_name>": ["...", "..."],
     ...
   }},
-  "expanded_context": "..."
+  "expanded_context": "...",
+  "claims": [...],
+  "entities": [...],
+  "relevance": [...],
+  "time_sensitivity": "..."
 }}
 """
 
@@ -144,6 +154,15 @@ def process(raw: dict, config: dict) -> Optional[dict]:
         "lenses": valid_lenses,
         "questions": questions,
         "expanded_context": parsed.get("expanded_context", ""),
+        "article_metadata": {
+            "title": raw.get("title", ""),
+            "author": raw.get("author", ""),
+            "topics": parsed.get("topics", parsed.get("tags", raw.get("raw_tags", []))),
+            "entities": parsed.get("entities", []),
+            "claims": parsed.get("claims", []),
+            "relevance": parsed.get("relevance", []),
+            "time_sensitivity": parsed.get("time_sensitivity", "unknown"),
+        },
     }
 
 
