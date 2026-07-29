@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from article_metadata import build as build_article_metadata
+
 logger = logging.getLogger(__name__)
 
 
@@ -84,21 +86,44 @@ def _render_note(obs: dict) -> str:
     lenses = obs.get("lenses", [])
     questions = obs.get("questions", {})
     expanded_context = obs.get("expanded_context", "")
-
-    # Build note ID
-    source_slug = _slugify(source)[:8]
+    metadata = build_article_metadata(
+        {
+            "note_id": obs.get("note_id", ""),
+            "title": obs.get("title", ""),
+            "source": source,
+            "source_url": source_url,
+            "published_date": obs.get("date", ""),
+            "author": obs.get("author", ""),
+            "raw_tags": tags,
+        },
+        {
+            **(obs.get("article_metadata") or {}),
+            "observation": observation_text,
+            "expanded_context": expanded_context,
+            "tags": obs.get("tags", []),
+        },
+    )
     url_hash = hashlib.md5(source_url.encode("utf-8")).hexdigest()[:4]
-    note_id = f"{date_str}-{source_slug}-{url_hash}"
-
+    note_id = metadata["note_id"] or f"{date_str}-{_slugify(source)[:8]}-{url_hash}"
     # YAML frontmatter — build as an ordered string to control formatting
     frontmatter_lines = [
         "---",
         f"id: {note_id}",
+        f"title: {_yaml_str(metadata['title'])}",
         f"date: {date_str}",
         f"source: {_yaml_str(source)}",
         f"source_url: {_yaml_str(source_url)}",
+        f"publication: {_yaml_str(metadata['publication'])}",
+        f"publication_date: {_yaml_str(metadata['publication_date'])}",
+        f"author: {_yaml_str(metadata['author'])}",
         f"observation: {_yaml_str(observation_text)}",
         f"tags: [{', '.join(tags)}]",
+        f"topics: [{', '.join(metadata['topics'])}]",
+        f"entities: [{', '.join(metadata['entities'])}]",
+        f"summary: {_yaml_str(metadata['summary'])}",
+        f"claims: [{', '.join(_yaml_str(c) for c in metadata['claims'])}]",
+        f"relevance: [{', '.join(metadata['relevance'])}]",
+        f"time_sensitivity: {metadata['time_sensitivity']}",
         f"interest_level: {interest_level}",
         f"lenses: [{', '.join(lenses)}]",
         "status: inbox",
