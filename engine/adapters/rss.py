@@ -14,8 +14,15 @@ BODY_MAX_CHARS = 500
 
 
 def fetch(config: dict) -> list[dict]:
+    """Fetch raw observations from all RSS feeds (see fetch_with_stats)."""
+    return fetch_with_stats(config)[0]
+
+
+def fetch_with_stats(config: dict) -> tuple[list[dict], int, int]:
     """
     Fetch raw observations from all RSS feeds in config['feeds'].
+    Returns (observations, feeds_failed, feeds_attempted) so callers can tell an outage
+    (every feed failed) from a quiet day (feeds reachable, nothing new).
 
     Args:
         config: The 'rss' section of the instance config YAML.
@@ -26,6 +33,7 @@ def fetch(config: dict) -> list[dict]:
     """
     results = []
     feeds = config.get("feeds", [])
+    attempted = failed = 0
 
     for feed_def in feeds:
         name = feed_def.get("name", "Unknown Feed")
@@ -36,10 +44,12 @@ def fetch(config: dict) -> list[dict]:
             logger.warning("Feed '%s' has no URL — skipping.", name)
             continue
 
+        attempted += 1
         try:
             parsed = feedparser.parse(url)
         except Exception as exc:
             logger.error("feedparser error for '%s' (%s): %s", name, url, exc)
+            failed += 1
             continue
 
         if parsed.get("bozo") and not parsed.get("entries"):
@@ -48,6 +58,7 @@ def fetch(config: dict) -> list[dict]:
                 name,
                 parsed.get("bozo_exception", "unknown"),
             )
+            failed += 1
             continue
 
         seen_urls: set[str] = set()
@@ -100,7 +111,7 @@ def fetch(config: dict) -> list[dict]:
                 )
                 continue
 
-    return results
+    return results, failed, attempted
 
 
 def _parse_date(entry: dict) -> str:

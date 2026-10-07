@@ -100,6 +100,7 @@ def main() -> dict:
     sources_cfg = cfg.get("sources", {})
 
     n_adapter_errors = 0
+    n_feeds_attempted = n_feeds_failed = 0
     for adapter_name in _ADAPTER_MODULES:
         source_cfg = sources_cfg.get(adapter_name, {})
         if not source_cfg.get("enabled", False):
@@ -118,7 +119,12 @@ def main() -> dict:
 
         logger.info("Fetching from adapter: %s", adapter_name)
         try:
-            raw_items = adapter_module.fetch(source_cfg)
+            if hasattr(adapter_module, "fetch_with_stats"):
+                raw_items, feeds_failed, feeds_attempted = adapter_module.fetch_with_stats(source_cfg)
+                n_feeds_failed += feeds_failed
+                n_feeds_attempted += feeds_attempted
+            else:
+                raw_items = adapter_module.fetch(source_cfg)
         except Exception as exc:
             logger.error("Unexpected error from adapter '%s': %s", adapter_name, exc)
             n_adapter_errors += 1
@@ -170,6 +176,7 @@ def main() -> dict:
     n_written = 0
     n_skipped_threshold = 0
     n_failed = 0
+    n_write_errors = 0
 
     for raw_obs in deduped:
         logger.info(
@@ -215,6 +222,7 @@ def main() -> dict:
                     exc,
                 )
                 n_failed += 1
+                n_write_errors += 1
 
     # --- Summary ---
     action = "would be written" if dry_run else "written"
@@ -236,6 +244,9 @@ def main() -> dict:
         "failed": n_failed,
         "written": n_written,
         "adapter_errors": n_adapter_errors,
+        "feeds_attempted": n_feeds_attempted,
+        "feeds_failed": n_feeds_failed,
+        "write_errors": n_write_errors,
     }
 
 

@@ -19,6 +19,7 @@ import contextlib
 import io
 import logging
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -47,6 +48,11 @@ def _verdict(counts) -> str | None:
         return f"{counts['failed']} item(s) failed to process and none succeeded (is Ollama running, or the API key set?)"
     if counts.get("fetched", 0) == 0 and counts.get("adapter_errors", 0) > 0:
         return f"no source could be fetched ({counts['adapter_errors']} adapter error(s))"
+    attempted, failed = counts.get("feeds_attempted", 0), counts.get("feeds_failed", 0)
+    if attempted and failed == attempted:
+        return f"no source could be fetched ({failed} of {attempted} feeds failed; is the network up?)"
+    if counts.get("written", 0) == 0 and counts.get("write_errors", 0) > 0:
+        return f"{counts['write_errors']} write(s) failed and none succeeded (is the vault writable?)"
     return None
 
 
@@ -139,7 +145,7 @@ def run(argv: list[str] | None = None, *, now: datetime | None = None) -> int:
         if isinstance(exc, _RunFailed):
             message = str(exc)
         elif isinstance(exc, SystemExit):
-            errors = [l for l in captured.getvalue().splitlines() if "ERROR" in l or "error" in l]
+            errors = [l for l in captured.getvalue().splitlines() if re.search(r"\s{2}ERROR\s{2,}", l)]
             cause = errors[-1].split(" — ", 1)[-1] if errors else ""
             message = f"engine exited {exc.code}" + (f": {cause}" if cause else "")
         else:

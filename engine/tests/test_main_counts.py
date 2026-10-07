@@ -36,7 +36,7 @@ def items(n):
 class MainCounts(unittest.TestCase):
     def run_main(self, fetch, process):
         tmp = Path(tempfile.mkdtemp())
-        adapter = mock.Mock(fetch=fetch)
+        adapter = mock.Mock(spec=["fetch"], fetch=fetch)  # a fetch-only adapter (no fetch_with_stats)
         with mock.patch.object(sys, "argv", ["main.py", "--config", str(config_with_rss(tmp))]), \
              mock.patch.object(main, "_load_adapter", return_value=adapter), \
              mock.patch.object(main.processor, "process", process):
@@ -50,6 +50,21 @@ class MainCounts(unittest.TestCase):
     def test_counts_adapter_error(self):
         result = self.run_main(mock.Mock(side_effect=RuntimeError("feed down")), mock.Mock())
         self.assertEqual((result["fetched"], result["adapter_errors"]), (0, 1))
+
+    def test_counts_write_errors_separately(self):
+        processed = {"source_url": "https://example.test/0", "interest_level": 5}
+        with mock.patch.object(main.writer, "write", side_effect=OSError("read-only vault")):
+            result = self.run_main(mock.Mock(return_value=items(2)), mock.Mock(return_value=processed))
+        self.assertEqual((result["processed"], result["written"], result["write_errors"]), (2, 0, 2))
+
+    def test_counts_feed_failures_when_adapter_reports_them(self):
+        adapter = mock.Mock()
+        adapter.fetch_with_stats = mock.Mock(return_value=([], 3, 3))
+        tmp = Path(tempfile.mkdtemp())
+        with mock.patch.object(sys, "argv", ["main.py", "--config", str(config_with_rss(tmp))]), \
+             mock.patch.object(main, "_load_adapter", return_value=adapter):
+            result = main.main()
+        self.assertEqual((result["feeds_attempted"], result["feeds_failed"]), (3, 3))
 
 
 if __name__ == "__main__":

@@ -46,6 +46,23 @@ class DailyEntryPoint(unittest.TestCase):
         self.assertEqual((second.returncode, second.stderr), (0, ""))
         self.assertIn("not due", (state / "daily.log").read_text())
 
+    def test_every_feed_unreachable_is_a_failure_not_a_quiet_day(self):
+        tmp = Path(tempfile.mkdtemp())
+        cfg = yaml.safe_load(offline_config(tmp).read_text())
+        cfg["sources"]["rss"]["enabled"] = True
+        cfg["sources"]["rss"]["feeds"] = [{"name": "Dead A", "url": "http://127.0.0.1:9/a.xml", "slug": "a"},
+                                          {"name": "Dead B", "url": "http://127.0.0.1:9/b.xml", "slug": "b"}]
+        path = tmp / "dead-feeds.yaml"
+        path.write_text(yaml.safe_dump(cfg))
+        cmd = [sys.executable, str(REPO / "engine" / "daily.py"), "--config", str(path),
+               "--state", str(tmp / "state"), "--secrets", str(tmp / "none")]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
+                           env={**os.environ, "HOME": str(tmp), "OLLAMA_HOST": "http://127.0.0.1:9"})
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertEqual(len(r.stderr.splitlines()), 1)
+        self.assertIn("2 of 2 feeds failed", r.stderr)
+        self.assertFalse((tmp / "state" / "success.txt").exists())
+
     def test_bad_config_is_one_line_failure(self):
         tmp = Path(tempfile.mkdtemp())
         cmd = [sys.executable, str(REPO / "engine" / "daily.py"), "--config", str(tmp / "missing.yaml"),

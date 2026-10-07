@@ -173,6 +173,31 @@ class DailyTest(unittest.TestCase):
         finally:
             logging.getLogger().removeHandler(stray)
 
+    def test_every_feed_failing_is_a_failure(self):
+        rc, err, _ = self.run_daily(at("2026-10-07 10:00"), engine=self.counts(
+            fetched=0, processed=0, written=0, feeds_attempted=8, feeds_failed=8))
+        self.assertEqual(rc, 1)
+        self.assertIn("8 of 8 feeds failed", err)
+
+    def test_some_feeds_failing_is_still_success(self):
+        rc, err, _ = self.run_daily(at("2026-10-07 10:00"), engine=self.counts(feeds_attempted=8, feeds_failed=3))
+        self.assertEqual((rc, err), (0, ""))
+
+    def test_every_write_failing_is_a_failure(self):
+        rc, err, _ = self.run_daily(at("2026-10-07 10:00"), engine=self.counts(written=0, write_errors=2))
+        self.assertEqual(rc, 1)
+        self.assertIn("2 write(s) failed", err)
+
+    def test_cause_is_the_last_error_level_line_not_a_warning_mentioning_error(self):
+        def run(argv):
+            import logging
+            logging.getLogger("observation-engine").error("Config error: bad lens path")
+            logging.getLogger("rss").warning("Feed returned bozo error: junk")
+            raise SystemExit(1)
+        rc, err, _ = self.run_daily(at("2026-10-07 10:00"), engine=mock.Mock(side_effect=run))
+        self.assertIn("Config error: bad lens path", err)
+        self.assertNotIn("bozo", err)
+
 
 if __name__ == "__main__":
     unittest.main()
