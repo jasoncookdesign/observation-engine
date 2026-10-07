@@ -45,7 +45,7 @@ def _load_adapter(name: str):
     return importlib.import_module(module_path)
 
 
-def main() -> None:
+def main() -> dict:
     parser = argparse.ArgumentParser(
         description="Music Culture Observation Engine"
     )
@@ -99,6 +99,7 @@ def main() -> None:
     all_raw: list[dict] = []
     sources_cfg = cfg.get("sources", {})
 
+    n_adapter_errors = 0
     for adapter_name in _ADAPTER_MODULES:
         source_cfg = sources_cfg.get(adapter_name, {})
         if not source_cfg.get("enabled", False):
@@ -112,6 +113,7 @@ def main() -> None:
                 "Adapter '%s' could not be loaded (missing dependency): %s",
                 adapter_name, exc,
             )
+            n_adapter_errors += 1
             continue
 
         logger.info("Fetching from adapter: %s", adapter_name)
@@ -119,6 +121,7 @@ def main() -> None:
             raw_items = adapter_module.fetch(source_cfg)
         except Exception as exc:
             logger.error("Unexpected error from adapter '%s': %s", adapter_name, exc)
+            n_adapter_errors += 1
             raw_items = []
 
         logger.info(
@@ -227,6 +230,13 @@ def main() -> None:
         f"  Failed:             {n_failed}\n"
         f"{'='*60}\n"
     )
+    return {
+        "fetched": n_fetched,
+        "processed": n_processed,
+        "failed": n_failed,
+        "written": n_written,
+        "adapter_errors": n_adapter_errors,
+    }
 
 
 def _apply_reddit_funnel(all_raw: list[dict], cfg: dict):

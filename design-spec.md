@@ -152,7 +152,7 @@ output:
   interest_threshold: 2   # minimum interest_level to write to vault
 
 schedule:
-  cron: "0 8 * * *"       # 08:00 daily
+  cron: "0 8 * * *"       # historical (Mini); on Ono-Sendai see INSTALL.md: hourly launchd + once-per-local-day guard
 ```
 
 ---

@@ -37,7 +37,9 @@ Environment overrides:
 - `LAUNCH_AGENTS_DIR`: where the plist is installed.
 - `RENDER_ONLY=<dir>`: renders the plist without loading it.
 
-A failing run exits 1 with one `observation-engine: …` stderr line, which opens "Scheduled job failing: observation-engine" in the work queue.
+**When it runs:** at the first hourly tick of each local day while the Mac is awake. That's usually just after midnight, or soon after wake or login if the Mac was asleep. The old 08:00 slot no longer applies.
+
+A run fails, and stays due for the next tick, when the engine errors, when every item fails to process (for example, Ollama down and no API key), or when no source could be fetched. A day with nothing new is a success. A failing run exits 1 with one `observation-engine: …` stderr line, which opens "Scheduled job failing: observation-engine" in the work queue.
 
 ---
 

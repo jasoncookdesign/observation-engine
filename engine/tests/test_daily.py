@@ -113,6 +113,66 @@ class DailyTest(unittest.TestCase):
         self.assertNotIn("ANTHROPIC_API_KEY", seen)
         self.assertIn("secrets file not found", (self.state / "daily.log").read_text())
 
+    # --- review conditions: meaningful success, failure causes kept ---
+    def counts(self, **kw):
+        base = {"fetched": 5, "processed": 5, "failed": 0, "written": 2, "adapter_errors": 0}
+        base.update(kw)
+        return mock.Mock(return_value=base)
+
+    def test_every_item_failing_is_a_failure_and_stays_due(self):
+        rc, err, _ = self.run_daily(at("2026-10-07 10:00"), engine=self.counts(processed=0, failed=5, written=0))
+        self.assertEqual(rc, 1)
+        self.assertIn("5 item(s) failed to process", err)
+        self.assertFalse((self.state / "success.txt").exists())
+
+    def test_every_source_failing_with_nothing_fetched_is_a_failure(self):
+        rc, err, _ = self.run_daily(at("2026-10-07 10:00"),
+                                    engine=self.counts(fetched=0, processed=0, written=0, adapter_errors=1))
+        self.assertEqual(rc, 1)
+        self.assertIn("no source could be fetched", err)
+
+    def test_partial_failure_is_still_success(self):
+        rc, err, _ = self.run_daily(at("2026-10-07 10:00"), engine=self.counts(processed=3, failed=2))
+        self.assertEqual((rc, err), (0, ""))
+        self.assertTrue((self.state / "success.txt").exists())
+
+    def test_quiet_day_with_nothing_new_is_success(self):
+        rc, err, _ = self.run_daily(at("2026-10-07 10:00"), engine=self.counts(fetched=0, processed=0, written=0))
+        self.assertEqual((rc, err), (0, ""))
+
+    def test_system_exit_failure_keeps_the_cause(self):
+        def config_error(argv):
+            import logging
+            logging.getLogger("observation-engine").error("Config error: output.vault_path is missing")
+            raise SystemExit(1)
+        rc, err, _ = self.run_daily(at("2026-10-07 10:00"), engine=mock.Mock(side_effect=config_error))
+        self.assertEqual(rc, 1)
+        self.assertEqual(len(err.splitlines()), 1)
+        self.assertIn("Config error: output.vault_path is missing", err)
+        self.assertIn("Config error: output.vault_path is missing", (self.state / "daily.log").read_text())
+
+    def test_clean_system_exit_is_logged_as_ok(self):
+        rc, err, _ = self.run_daily(at("2026-10-07 10:00"), engine=mock.Mock(side_effect=SystemExit(0)))
+        self.assertEqual((rc, err), (0, ""))
+        self.assertIn("status=ok", (self.state / "daily.log").read_text())
+
+    def test_engine_logging_never_reaches_real_stderr(self):
+        import logging
+        stray = logging.StreamHandler(sys.__stderr__)  # as if `main` had been imported earlier
+        logging.getLogger().addHandler(stray)
+        try:
+            def noisy(argv):
+                logging.getLogger("observation-engine").warning("feed timed out")
+                return {"fetched": 1, "processed": 1, "failed": 0, "written": 1, "adapter_errors": 0}
+            with mock.patch.object(sys, "__stderr__", io.StringIO()) as real_err:
+                stray.setStream(real_err)
+                rc, err, _ = self.run_daily(at("2026-10-07 10:00"), engine=mock.Mock(side_effect=noisy))
+            self.assertEqual((rc, err), (0, ""))
+            self.assertEqual(real_err.getvalue(), "")
+            self.assertIn("feed timed out", (self.state / "daily.log").read_text())
+        finally:
+            logging.getLogger().removeHandler(stray)
+
 
 if __name__ == "__main__":
     unittest.main()

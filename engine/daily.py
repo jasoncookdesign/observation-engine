@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import logging
 import os
 import sys
 from datetime import datetime
@@ -27,15 +28,54 @@ DEFAULT_STATE = Path.home() / "Library" / "Logs" / "observation-engine"
 DEFAULT_SECRETS = Path.home() / ".config" / "observation-engine" / "secrets"
 
 
-def engine_main(argv: list[str]) -> None:
-    """Run the engine's own CLI with argv (it reads sys.argv and may sys.exit)."""
+def engine_main(argv: list[str]):
+    """Run the engine's own CLI with argv (it reads sys.argv and may sys.exit); returns its counts."""
     import main as engine
     saved = sys.argv
     sys.argv = ["main.py", *argv]
     try:
-        engine.main()
+        return engine.main()
     finally:
         sys.argv = saved
+
+
+def _verdict(counts) -> str | None:
+    """A failure message when the run did nothing useful because something broke, else None."""
+    if not isinstance(counts, dict):
+        return None
+    if counts.get("processed", 0) == 0 and counts.get("failed", 0) > 0:
+        return f"{counts['failed']} item(s) failed to process and none succeeded (is Ollama running, or the API key set?)"
+    if counts.get("fetched", 0) == 0 and counts.get("adapter_errors", 0) > 0:
+        return f"no source could be fetched ({counts['adapter_errors']} adapter error(s))"
+    return None
+
+
+@contextlib.contextmanager
+def _capture_logs(stream):
+    """Send all logging to `stream` for the run, whatever handlers the engine set up at import."""
+    root = logging.getLogger()
+    saved, level = root.handlers[:], root.level
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-8s  %(name)s — %(message)s"))
+    root.handlers = [handler]
+    root.setLevel(logging.INFO)
+    try:
+        yield
+    finally:
+        root.handlers, root.level = saved, level
+
+
+class _RunFailed(Exception):
+    pass
+
+
+def _with_output(captured: io.StringIO, status: str) -> str:
+    body = captured.getvalue().rstrip()
+    return f"{body}\n{status}" if body else status
+
+
+def _redact(text: str, key: str | None) -> str:
+    return text.replace(key, "***") if key else text
 
 
 def _load_key(path: Path) -> str | None:
@@ -66,6 +106,7 @@ def run(argv: list[str] | None = None, *, now: datetime | None = None) -> int:
     now = now or datetime.now().astimezone()
     today = now.date().isoformat()
     key = None
+    captured = io.StringIO()
     try:
         args.state.mkdir(parents=True, exist_ok=True)
         success = args.state / "success.txt"
@@ -79,23 +120,35 @@ def run(argv: list[str] | None = None, *, now: datetime | None = None) -> int:
         else:
             _log(args.state, now, f"secrets file not found: {args.secrets}; running local-only")
         _write_marker(args.state, "attempt", now.isoformat())
-        captured = io.StringIO()
-        with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
-            engine_main(["--config", args.config])
-        _log(args.state, now, captured.getvalue().rstrip() + "\nstatus=ok")
+        with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured), _capture_logs(captured):
+            try:
+                counts = engine_main(["--config", args.config])
+            except SystemExit as stop:
+                if stop.code not in (0, None):
+                    raise
+                counts = None
+        problem = _verdict(counts)
+        if problem:
+            raise _RunFailed(problem)
+        _log(args.state, now, _redact(_with_output(captured, "status=ok"), key))
         _write_marker(args.state, "success", f"{today} {now.isoformat()}")
         return 0
     except BaseException as exc:  # noqa: BLE001 - the one-line failure contract covers everything
-        if isinstance(exc, SystemExit) and exc.code in (0, None):
-            _write_marker(args.state, "success", f"{today} {now.isoformat()}")
-            return 0
         if isinstance(exc, KeyboardInterrupt):
             raise
-        message = " ".join(f"{type(exc).__name__}: {exc}".split())
+        if isinstance(exc, _RunFailed):
+            message = str(exc)
+        elif isinstance(exc, SystemExit):
+            errors = [l for l in captured.getvalue().splitlines() if "ERROR" in l or "error" in l]
+            cause = errors[-1].split(" — ", 1)[-1] if errors else ""
+            message = f"engine exited {exc.code}" + (f": {cause}" if cause else "")
+        else:
+            message = f"{type(exc).__name__}: {exc}"
+        message = " ".join(message.split())
         if key:
             message = message.replace(key, "***")
         with contextlib.suppress(Exception):
-            _log(args.state, now, f"status=failed {message}")
+            _log(args.state, now, _redact(_with_output(captured, f"status=failed {message}"), key))
             _write_marker(args.state, "failure", f"{now.isoformat()} {message}")
         print(f"observation-engine: {message}", file=sys.stderr)
         return 1
