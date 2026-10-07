@@ -6,7 +6,9 @@ Usage:
 """
 
 import argparse
+import importlib
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -58,6 +60,20 @@ def main() -> None:
         help="Fetch and process but do not write to vault.",
     )
     args = parser.parse_args()
+
+    # --- Optional startup hook (generic plugin mechanism) ---
+    # Set OBS_STARTUP_HOOK to a dotted module path to import at startup. The
+    # module is loaded purely for its import-time side effects (e.g. registering
+    # an optional model selector). Any load failure is logged and skipped so a
+    # missing or broken plugin never breaks a run.
+    _startup_hook = os.environ.get("OBS_STARTUP_HOOK", "").strip()
+    if _startup_hook:
+        try:
+            importlib.import_module(_startup_hook)
+        except Exception as _hook_exc:
+            logger.warning(
+                "Startup hook %r failed to load: %s", _startup_hook, _hook_exc
+            )
 
     # --- Load config ---
     try:
