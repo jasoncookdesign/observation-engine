@@ -4,3 +4,4 @@ __pycache__/
 *.log
 .jasonos-secrets
 *.secrets
+.venv/

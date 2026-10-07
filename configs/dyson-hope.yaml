@@ -120,7 +120,7 @@ sources:
     top_n: 10              # tracks to pull per chart
 
 output:
-  vault_path: "/Volumes/SandboxData/observation-vaults/dyson-hope-music-culture/"
+  vault_path: "~/Vaults/observation/"   # Ono-Sendai, local, outside git (work#52)
   inbox_folder: "Observation Inbox"
   interest_threshold: 2   # minimum interest_level to write to vault
 

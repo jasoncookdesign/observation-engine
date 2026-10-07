@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Rendered by launchd/install.sh; @NAME@ placeholders are replaced with XML-escaped absolute values. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jasoncookdesign.observation-engine</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@ALERT_PYTHON@</string>
+    <string>@JOB_ALERT@</string>
+    <string>--job</string>
+    <string>observation-engine</string>
+    <string>--log</string>
+    <string>@STDOUT@</string>
+    <string>--log</string>
+    <string>@STDERR@</string>
+    <string>--</string>
+    <string>@ENGINE_PYTHON@</string>
+    <string>@REPO@/engine/daily.py</string>
+    <string>--config</string>
+    <string>@REPO@/configs/dyson-hope.yaml</string>
+    <string>--state</string>
+    <string>@STATE@</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>@REPO@</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>@STDOUT@</string>
+  <key>StandardErrorPath</key>
+  <string>@STDERR@</string>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>

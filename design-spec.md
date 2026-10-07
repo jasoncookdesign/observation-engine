@@ -265,9 +265,8 @@ observation-engine/
 ├── INSTALL.md               # macOS deployment guide
 ├── README.md                # project overview and quick-start
 ├── requirements.txt         # Python dependencies
-├── run.sh                   # launchd launcher (copied to ~/bin at deploy time)
-├── com.jasonos.observation-engine.dyson-hope.plist   # launchd schedule template
-├── jasonos-observation-engine-activate.command        # one-step activation script
+├── engine/daily.py          # launchd entry point: once per local day, one-line failures
+├── launchd/                 # plist template, install.sh, uninstall.sh (job-alerts wrapped)
 ├── engine/
 │   ├── main.py              # CLI entry point + pipeline runner
 │   ├── config.py            # config loader + validator
