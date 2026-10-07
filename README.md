@@ -98,7 +98,7 @@ ANTHROPIC_API_KEY=your-key \
 
 ## Scheduling (macOS launchd)
 
-The repo includes a launchd plist template (`com.jasonos.observation-engine.dyson-hope.plist`) that runs the engine daily at 08:00. See `INSTALL.md` for full setup instructions.
+`launchd/install.sh` installs `com.jasoncookdesign.observation-engine`, an hourly launchd job wrapped in job-alerts. Its entry point, `engine/daily.py`, runs the engine at most once per local day, so missed days catch up. See `INSTALL.md`.
 
 ---
 

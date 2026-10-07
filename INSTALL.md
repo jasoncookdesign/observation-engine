@@ -1,101 +1,67 @@
-# Music Culture Observation Engine: Install Guide
+# Music Culture Observation Engine: Install Guide (Ono-Sendai)
 
-The engine runs as a per-user launchd job and fires **daily at 08:00**.
-
-> **One-step install / reinstall:** run the activation script from the repo
-> root. It is idempotent and does everything below (install launcher to `~/bin`,
-> deploy plist, bootstrap, verify, test-run):
->
-> ```bash
-> zsh /path/to/observation-engine/jasonos-observation-engine-activate.command
-> ```
->
-> Two things that are easy to get wrong and will silently break the daily run:
-> 1. A plist sitting in `~/Library/LaunchAgents/` does **nothing** until it is
->    `launchctl bootstrap`-ed. Copying the file is not enough.
-> 2. launchd cannot exec the entry script, nor open StandardOut/Err paths, on
->    an external volume — it fails with EX_CONFIG (78) and no output. So the
->    launcher lives in `~/bin` and logs go to `~/Library/Logs` (internal disk).
->    The running engine still reads config and writes the vault on the external
->    volume normally.
+The engine runs as a per-user launchd job, `com.jasoncookdesign.observation-engine`. launchd fires it **hourly and at load**, wrapped in [job-alerts](https://github.com/jasoncookdesign/job-alerts). Its entry point, `engine/daily.py`, runs the engine **at most once per local day**, so a day the Mac slept through catches up at the next awake tick, and below-threshold items aren't re-scored every hour. The vault is `~/Vaults/observation`, which is local and outside git (work#52).
 
 ---
 
-## 1. Install Python dependencies
-
-Run once against the interpreter the job uses (`/opt/homebrew/bin/python3`):
+## 1. Python environment (project-local)
 
 ```bash
-/opt/homebrew/bin/python3 -m pip install -r /path/to/observation-engine/requirements.txt \
-  --break-system-packages
+cd ~/Sites/observation-engine
+uv venv .venv --python /usr/local/bin/python3
+uv pip install --python .venv/bin/python -r requirements.txt pytest
+.venv/bin/python -m pytest -q engine/tests
 ```
 
 ---
 
-## 2. Secrets (no keys in the plist)
+## 2. Inference and secrets
 
-The launcher (`run.sh`) reads a secrets file (`key=value` per line, not tracked
-in git) and exports its contents as environment variables before exec-ing the
-engine. Inference is local-first (Ollama) with Anthropic API as fallback, so
-`ANTHROPIC_API_KEY` should be present in the secrets file to enable the fallback
-path. The plist contains **no** API key.
-
-Set the secrets file path by editing `run.sh` (`SECRETS=` at the top).
+- **Local first:** Ollama at `http://localhost:11434` with `llama3.1:8b` (`ollama pull llama3.1:8b`). The Ollama app starts at login. With a Homebrew install, run `brew services start ollama` instead.
+- **Fallback:** the Anthropic API. Put the key in `~/.config/observation-engine/secrets` (mode 600) as one unquoted line, `ANTHROPIC_API_KEY=…`. `daily.py` loads only that key. Without the file the engine runs local-only.
 
 ---
 
-## 3. Load the launchd job (bootstrap — required)
-
-The activation script in the box above is the supported path. The manual
-equivalent (substitute `/path/to/observation-engine` for your actual repo path):
+## 3. Install the launchd job
 
 ```bash
-REPO=/path/to/observation-engine
-
-cp "$REPO/run.sh" ~/bin/jasonos-observation-engine.sh
-chmod 755 ~/bin/jasonos-observation-engine.sh
-mkdir -p ~/Library/Logs
-cp "$REPO/com.jasonos.observation-engine.dyson-hope.plist" ~/Library/LaunchAgents/
-
-launchctl bootout   gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist 2>/dev/null
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist
-launchctl list | grep observation-engine    # verify registered
+zsh launchd/install.sh      # renders, lints with plutil, bootstraps; RunAtLoad runs it once now
+zsh launchd/uninstall.sh    # unload and remove
 ```
 
-Edit `run.sh` to point `SECRETS` at your secrets file and confirm the `exec` line
-uses the correct Python interpreter and repo path before installing.
+Environment overrides:
+- `ENGINE_PYTHON`: defaults to `.venv/bin/python`.
+- `ALERT_PYTHON`: defaults to `/usr/local/bin/python3`.
+- `JOB_ALERTS`: defaults to `~/Sites/job-alerts`.
+- `OBS_STATE`: defaults to `~/Library/Logs/observation-engine`.
+- `LAUNCH_AGENTS_DIR`: where the plist is installed.
+- `RENDER_ONLY=<dir>`: renders the plist without loading it.
 
-The job runs daily at 08:00. It does **not** run at load time (`RunAtLoad` is
-false). Stop scheduling without deleting:
+**When it runs:** at the first hourly tick of each local day while the Mac is awake. That's usually just after midnight, or soon after wake or login if the Mac was asleep. The old 08:00 slot no longer applies.
+
+A run fails, and stays due for the next tick, when the engine errors, when every item fails to process (for example, Ollama down and no API key), or when no source could be fetched. A day with nothing new is a success. A failing run exits 1 with one `observation-engine: …` stderr line, which opens "Scheduled job failing: observation-engine" in the work queue.
+
+---
+
+## 4. Dry run to validate
+
+Fetches and processes observations but doesn't write to the vault:
 
 ```bash
-launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.jasonos.observation-engine.dyson-hope.plist
+.venv/bin/python engine/main.py --config configs/dyson-hope.yaml --dry-run
 ```
 
 ---
 
-## 4. Dry-run to validate
-
-Fetches and processes observations but does not write to the vault:
+## 5. Manual run
 
 ```bash
-cd /path/to/observation-engine
-/opt/homebrew/bin/python3 engine/main.py --config configs/dyson-hope.yaml --dry-run
+.venv/bin/python engine/daily.py --config configs/dyson-hope.yaml    # honors once-per-day
+.venv/bin/python engine/main.py --config configs/dyson-hope.yaml     # runs now, unconditionally
+launchctl kickstart gui/$(id -u)/com.jasoncookdesign.observation-engine
 ```
 
----
-
-## 5. Manual one-off run
-
-Through launchd (same env, launcher, and secrets as the scheduled run):
-
-```bash
-launchctl kickstart gui/$(id -u)/com.jasonos.observation-engine.dyson-hope
-```
-
-Logs (internal disk):
-- `stdout`: `~/Library/Logs/observation-engine-dyson-hope.log`
-- `stderr`: `~/Library/Logs/observation-engine-dyson-hope-error.log` (engine logging)
+Logs and markers: `~/Library/Logs/observation-engine/`, holding `daily.log`, `success.txt` (the local date of the last good run), `failure.txt` and the launchd stdout and stderr logs.
 
 ---
 

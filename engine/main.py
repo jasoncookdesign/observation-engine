@@ -6,7 +6,9 @@ Usage:
 """
 
 import argparse
+import importlib
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -43,7 +45,7 @@ def _load_adapter(name: str):
     return importlib.import_module(module_path)
 
 
-def main() -> None:
+def main() -> dict:
     parser = argparse.ArgumentParser(
         description="Music Culture Observation Engine"
     )
@@ -58,6 +60,20 @@ def main() -> None:
         help="Fetch and process but do not write to vault.",
     )
     args = parser.parse_args()
+
+    # --- Optional startup hook (generic plugin mechanism) ---
+    # Set OBS_STARTUP_HOOK to a dotted module path to import at startup. The
+    # module is loaded purely for its import-time side effects (e.g. registering
+    # an optional model selector). Any load failure is logged and skipped so a
+    # missing or broken plugin never breaks a run.
+    _startup_hook = os.environ.get("OBS_STARTUP_HOOK", "").strip()
+    if _startup_hook:
+        try:
+            importlib.import_module(_startup_hook)
+        except Exception as _hook_exc:
+            logger.warning(
+                "Startup hook %r failed to load: %s", _startup_hook, _hook_exc
+            )
 
     # --- Load config ---
     try:
@@ -83,6 +99,8 @@ def main() -> None:
     all_raw: list[dict] = []
     sources_cfg = cfg.get("sources", {})
 
+    n_adapter_errors = 0
+    n_feeds_attempted = n_feeds_failed = 0
     for adapter_name in _ADAPTER_MODULES:
         source_cfg = sources_cfg.get(adapter_name, {})
         if not source_cfg.get("enabled", False):
@@ -96,13 +114,20 @@ def main() -> None:
                 "Adapter '%s' could not be loaded (missing dependency): %s",
                 adapter_name, exc,
             )
+            n_adapter_errors += 1
             continue
 
         logger.info("Fetching from adapter: %s", adapter_name)
         try:
-            raw_items = adapter_module.fetch(source_cfg)
+            if hasattr(adapter_module, "fetch_with_stats"):
+                raw_items, feeds_failed, feeds_attempted = adapter_module.fetch_with_stats(source_cfg)
+                n_feeds_failed += feeds_failed
+                n_feeds_attempted += feeds_attempted
+            else:
+                raw_items = adapter_module.fetch(source_cfg)
         except Exception as exc:
             logger.error("Unexpected error from adapter '%s': %s", adapter_name, exc)
+            n_adapter_errors += 1
             raw_items = []
 
         logger.info(
@@ -151,6 +176,7 @@ def main() -> None:
     n_written = 0
     n_skipped_threshold = 0
     n_failed = 0
+    n_write_errors = 0
 
     for raw_obs in deduped:
         logger.info(
@@ -196,6 +222,7 @@ def main() -> None:
                     exc,
                 )
                 n_failed += 1
+                n_write_errors += 1
 
     # --- Summary ---
     action = "would be written" if dry_run else "written"
@@ -211,6 +238,16 @@ def main() -> None:
         f"  Failed:             {n_failed}\n"
         f"{'='*60}\n"
     )
+    return {
+        "fetched": n_fetched,
+        "processed": n_processed,
+        "failed": n_failed,
+        "written": n_written,
+        "adapter_errors": n_adapter_errors,
+        "feeds_attempted": n_feeds_attempted,
+        "feeds_failed": n_feeds_failed,
+        "write_errors": n_write_errors,
+    }
 
 
 def _apply_reddit_funnel(all_raw: list[dict], cfg: dict):
