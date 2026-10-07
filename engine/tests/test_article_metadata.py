@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 
 from article_metadata import build
 from writer import _render_note
@@ -29,7 +30,8 @@ class TestArticleMetadata(unittest.TestCase):
         rendered = _render_note({
             "source": "Music Ally",
             "source_url": "https://example.test/article",
-            "date": "2026-07-28",
+            # Relative to today: time_sensitivity is "high" only for items <= 30 days old.
+            "date": date.today().isoformat(),
             "title": "Bandcamp changes discovery",
             "observation": "Bandcamp changes discovery.",
             "expanded_context": "The platform changes how listeners find releases.",
